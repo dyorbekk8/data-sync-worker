@@ -24,14 +24,14 @@ TEMPLATES_WITHOUT_NAME = [
     {
         "subject": "I don't waste your time!",
         "body": """I know you're busy, so this will only take 20 seconds!
-I really admire the work you're doing — it’s clear you guys are experts in your field.
+I admire the work you're doing — it’s clear you guys are experts in your field.
 
-The only thing missing is a digital home; without it, you're losing leads to competitors who are just easier to find online.
+The only thing missing is a professional digital home; without it, you're losing leads to competitors who are just easier to find online.
 
 So I built an entire website for you, want to see?
 30-day moneyback guarantee!
 
-Best, Diyor
+Best, Diyor | DEV
 Portfolio: http://diyor.site"""
     },
     
