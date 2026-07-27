@@ -21,6 +21,16 @@ jobs:
       - name: Install Modal
         run: pip install modal
 
+      # Modal'da email-secrets'ni avtomat yaratib berish
+      - name: Create Modal Secret automatically
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
+        run: |
+          modal secret create email-secrets GSPREAD_CREDENTIALS="$GSPREAD_CREDENTIALS" --force
+
+      # Deploy qilish
       - name: Deploy to Modal Server
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
