@@ -19,10 +19,11 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# --- CREDENTIALS YUKLASH (TO'G'RILANGAN QISM) ---
+# --- CREDENTIALS YUKLASH (RAILWAY VA LOCAL UCHUN OPTIMALLASHTIRILGAN) ---
 CREDS_FILE = "creds.json"
 creds_dict = None
 
+# 1. Avvalo creds.json faylini tekshiramiz
 if os.path.exists(CREDS_FILE):
     try:
         with open(CREDS_FILE, "r") as f:
@@ -30,13 +31,17 @@ if os.path.exists(CREDS_FILE):
     except Exception as e:
         print(f"⚠️ creds.json faylini o'qishda xatolik: {e}")
 
+# 2. Agar fayl bo'lmasa, Railway / Environment Variables'dan o'qiymiz
 if not creds_dict:
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS") or os.environ.get("GOOGLE_OAUTH_JSON")
     if creds_json:
-        creds_dict = json.loads(creds_json)
+        try:
+            creds_dict = json.loads(creds_json, strict=False)
+        except Exception as e:
+            print(f"⚠️ Environment Variable'dan JSON parsing xatoligi: {e}")
 
 if not creds_dict:
-    raise ValueError("❌ Na 'creds.json' fayli va na 'GOOGLE_CREDENTIALS' o'zgaruvchisi topildi!")
+    raise ValueError("❌ Na 'creds.json' fayli va na 'GOOGLE_CREDENTIALS' environment variable topildi!")
 
 # OAuth 2.0 va Service Account avtomatik integratsiyasi
 if "installed" in creds_dict or "web" in creds_dict:
@@ -245,7 +250,7 @@ def calculate_daily_limit(acc, days_passed):
     return min(base_limit, 50) if acc['type'] == 'gmail' else min(base_limit, 100)
 
 def main():
-    print("🚀 Uzluksiz (24/7) yuborish tizimi ishga tushdi...")
+    print("🚀 Uzluksiz (24/7) yuborish tizimi Railway'da ishga tushdi...")
 
     # Sarlavhalarni tayyorlash
     try:
