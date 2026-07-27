@@ -1,45 +1,36 @@
-import modal
-import time
-import random
+name: Deploy Modal Automation
 
-app = modal.App("cold-email-continuous")
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-# Kerakli kutubxonalar
-image = modal.Image.debian_slim().pip_install(
-    "gspread", 
-    "google-auth", 
-    "python-dotenv"
-)
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-# Har kuni yoki 24/7 to'xtovsiz rejim
-@app.function(
-    image=image,
-    secrets=[modal.Secret.from_name("email-secrets")],
-    timeout=86400
-)
-def run_infinite_loop():
-    # 'run.py' faylingizdan asosiy funksiyani chaqiramiz
-    # Eslatma: run.py ichidagi yuborish funksiyangiz nomini quyida to'g'ri ko'rsating
-    import run 
-    
-    print("24/7 Avtomatizatsiya ishga tushdi...")
-    
-    while True:
-        try:
-            # Agar run.py ichida asosiy funksiyangiz bo'lsa (masalan run.main() yoki run.start())
-            # O'sha funksiyani shu yerda chaqirasiz:
-            run.main()  # <--- run.py ichidagi funksiya nomi
-            
-            # Har bir aylanishdan keyin 20-30 sekund pauza
-            sleep_time = random.randint(20, 30)
-            print(f"Keyingi harakat uchun {sleep_time}s kutilyapti...")
-            time.sleep(sleep_time)
-                
-        except Exception as e:
-            print(f"Xatolik yuz berdi: {e}")
-            time.sleep(10)
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-# Deploy bo'lishi bilan Modal bulutida avtomat ishga tushib ketishi uchun:
-@app.local_entrypoint()
-def main():
-    run_infinite_loop.remote()
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Create Modal Secret automatically
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
+        run: |
+          modal secret create email-secrets GSPREAD_CREDENTIALS="$GSPREAD_CREDENTIALS" --force
+
+      - name: Deploy to Modal Server
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy app.py
