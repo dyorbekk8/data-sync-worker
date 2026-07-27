@@ -4,7 +4,7 @@ import random
 
 app = modal.App("cold-email-continuous")
 
-# Kerakli pip kutubxonalari
+# requirements.txt dagi barcha kutubxonalarni yuklaymiz
 image = modal.Image.debian_slim().pip_install(
     "gspread", 
     "google-auth", 
@@ -14,32 +14,33 @@ image = modal.Image.debian_slim().pip_install(
 @app.function(
     image=image,
     secrets=[modal.Secret.from_name("email-secrets")],
-    timeout=86400  # 24 soatlik to'xtovsiz sikl
+    timeout=86400  # 24 soat to'xtovsiz ishlash
 )
 def run_infinite_loop():
-    from main import process_next_lead  # 1 ta leadga xat yuboruvchi funksiya
-    
-    print("24/7 To'xtovsiz rejim ishga tushdi...")
+    print("Modal 24/7 sikl ishga tushdi...")
     
     while True:
         try:
-            # Leadga xat yuborish
-            has_more_leads = process_next_lead()
-            
-            if has_more_leads:
-                # Faqat xat yuborilgandan keyin 20-30 sek interval
-                sleep_time = random.randint(20, 30)
-                print(f"Xat yuborildi. Keyingisi uchun {sleep_time}s pauza...")
-                time.sleep(sleep_time)
+            # run.py faylini to'g'ridan-to me'yorida ishga tushirish
+            import run
+            if hasattr(run, 'main'):
+                run.main()
+            elif hasattr(run, 'start'):
+                run.start()
             else:
-                # Lead tugasa, UXLAMAYDI! Darhol qayta tekshiradi
-                pass
+                # Agar run.py ichida funksiya bo'lmasa, faylning o'zini o'qiydi
+                exec(open("run.py").read())
                 
+            # 20-30 sekundlik pauza
+            sleep_time = random.randint(20, 30)
+            print(f"Bitta sikl tugadi. {sleep_time}s pauza...")
+            time.sleep(sleep_time)
+            
         except Exception as e:
-            # Xatolik bo'lsa ham UXLAMAYDI, darhol keyingi aylanishga o'tadi
-            print(f"Xatolik: {e}. Qayta urunilmoqda...")
-            pass
+            print(f"Skriptda xatolik: {e}. 10 sekunddan keyin qayta uruniladi...")
+            time.sleep(10)
 
+# Deploy bo'lishi bilanoq Modal bulutida siklni yurgizib yuborish
 @app.local_entrypoint()
 def main():
     run_infinite_loop.remote()
