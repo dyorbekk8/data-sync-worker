@@ -1,30 +1,37 @@
-import modal
+name: Deploy Modal Automation
 
-app = modal.App("cold-email-continuous")
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-image = modal.Image.debian_slim().pip_install(
-    "gspread", 
-    "google-auth", 
-    "python-dotenv"
-)
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-# Modal har 1 minutda avtomat ishga tushiradi
-@app.function(
-    image=image,
-    secrets=[modal.Secret.from_name("email-secrets")],
-    schedule=modal.Period(minutes=1),
-    timeout=300
-)
-def run_job():
-    import run  # Sizning run.py faylingiz
-    
-    print("Modal ishni boshladi...")
-    
-    # run.py ichidagi asosiy funksiyani chaqiramiz
-    if hasattr(run, 'main'):
-        run.main()
-    elif hasattr(run, 'start'):
-        run.start()
-    else:
-        # Agar funksiya emas, shunchaki python fayli bo'lsa
-        exec(open("run.py").read())
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Modal
+        run: pip install modal
+
+      # Modal'da email-secrets yaratib, ichiga barcha o'zgaruvchilarni solamiz
+      - name: Create Modal Secret automatically
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
+        run: |
+          modal secret create email-secrets GSPREAD_CREDENTIALS="$GSPREAD_CREDENTIALS" --force
+
+      - name: Deploy to Modal Server
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy app.py
