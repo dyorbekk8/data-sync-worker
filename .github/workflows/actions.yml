@@ -2,8 +2,8 @@ name: Cold Email Automation Runner
 
 on:
   schedule:
-    # Har 20 daqiqada ishlaydi (tirbandlikka tushmaslik uchun 7, 27, 47 daqiqalar)
-    - cron: '7,27,47 * * * *'
+    # Har 30 daqiqada ishlaydi (GitHub serverlari uchun eng barqaror va xavfsiz interval)
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -14,15 +14,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
@@ -36,6 +33,3 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_NAME: "Cold Email Leads"
         run: python run.py
-
-      - name: Keepalive Workflow
-        uses: gautamkrishnar/keepalive-workflow@v2
