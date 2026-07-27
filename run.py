@@ -19,13 +19,26 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds_json = os.environ.get("GOOGLE_CREDENTIALS")
-if not creds_json:
-    raise ValueError("GOOGLE_CREDENTIALS environment variable topilmadi!")
+# --- CREDENTIALS YUKLASH (TO'G'RILANGAN QISM) ---
+CREDS_FILE = "creds.json"
+creds_dict = None
 
-creds_dict = json.loads(creds_json)
+if os.path.exists(CREDS_FILE):
+    try:
+        with open(CREDS_FILE, "r") as f:
+            creds_dict = json.load(f)
+    except Exception as e:
+        print(f"⚠️ creds.json faylini o'qishda xatolik: {e}")
 
-# OAuth 2.0 hamda Service Account avtomatik integratsiyasi
+if not creds_dict:
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+
+if not creds_dict:
+    raise ValueError("❌ Na 'creds.json' fayli va na 'GOOGLE_CREDENTIALS' o'zgaruvchisi topildi!")
+
+# OAuth 2.0 va Service Account avtomatik integratsiyasi
 if "installed" in creds_dict or "web" in creds_dict:
     from google.oauth2.credentials import Credentials as OAuthCredentials
     info = creds_dict.get("installed") or creds_dict.get("web")
