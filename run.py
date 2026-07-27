@@ -11,13 +11,34 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gspread
 
-# --- RAILWAY / CLOUD SERVERLAR UCHUN IPv4 MAJBURINI SOZLASH ---
-old_getaddrinfo = socket.getaddrinfo
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [response for response in responses if response[0] == socket.AF_INET]
+# --- RAILWAY / CLOUD SERVERLARDA IPv6 UNREACHABLE XATOSINI TUBDAN TUZATISH ---
+orig_create_connection = socket.create_connection
 
-socket.getaddrinfo = new_getaddrinfo
+def create_connection_ipv4(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+    host, port = address
+    err = None
+    for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+        af, socktype, proto, canonname, sa = res
+        sock = None
+        try:
+            sock = socket.socket(af, socktype, proto)
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sa)
+            return sock
+        except socket.error as _:
+            err = _
+            if sock is not None:
+                sock.close()
+    if err is not None:
+        raise err
+    else:
+        raise socket.error("getaddrinfo returns empty list")
+
+socket.create_connection = create_connection_ipv4
+# --------------------------------------------------------------------------
 
 from sender import ACCOUNTS
 from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
