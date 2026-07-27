@@ -5,10 +5,19 @@ import json
 import smtplib
 import imaplib
 import email
+import socket
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gspread
+
+# --- RAILWAY / CLOUD SERVERLAR UCHUN IPv4 MAJBURINI SOZLASH ---
+old_getaddrinfo = socket.getaddrinfo
+def new_getaddrinfo(*args, **kwargs):
+    responses = old_getaddrinfo(*args, **kwargs)
+    return [response for response in responses if response[0] == socket.AF_INET]
+
+socket.getaddrinfo = new_getaddrinfo
 
 from sender import ACCOUNTS
 from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
@@ -90,7 +99,7 @@ def save_to_sent_folder(acc, msg):
     if acc.get('type') == 'gmail':
         return
     try:
-        mail = imaplib.IMAP4_SSL(acc['imap_host'])
+        mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=15)
         mail.login(acc['email'], acc['password'])
         mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
@@ -105,10 +114,13 @@ def send_email_real(acc, to_email, subject, body):
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        if acc['smtp_port'] == 465:
-            server = smtplib.SMTP_SSL(acc['smtp_host'], 465, timeout=15)
+        smtp_host = acc.get('smtp_host', 'smtp.gmail.com')
+        smtp_port = int(acc.get('smtp_port', 465))
+
+        if acc.get('type') == 'gmail' or 'gmail.com' in smtp_host or smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, 465, timeout=20)
         else:
-            server = smtplib.SMTP(acc['smtp_host'], acc['smtp_port'], timeout=15)
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=20)
             server.starttls()
 
         server.login(acc['email'], acc['password'])
@@ -199,7 +211,7 @@ def check_replies():
 
         for acc in ACCOUNTS:
             try:
-                mail = imaplib.IMAP4_SSL(acc['imap_host'])
+                mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=15)
                 mail.login(acc['email'], acc['password'])
                 mail.select('INBOX')
 
