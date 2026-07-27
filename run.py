@@ -9,8 +9,6 @@ from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gspread
-from google.oauth2.service_account import Credentials as ServiceAccountCredentials
-from google.oauth2.credentials import Credentials as OAuthCredentials
 
 from sender import ACCOUNTS
 from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME
@@ -27,16 +25,14 @@ if not creds_json:
 
 creds_dict = json.loads(creds_json)
 
-# Service Account va OAuth JSON formatlarini avtomatik moslashtirish:
+# Service Account va OAuth Client ID JSON moslashuvi:
 if "client_email" in creds_dict:
-    # Service Account JSON holatida
+    from google.oauth2.service_account import Credentials as ServiceAccountCredentials
     creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPE)
+    gc = gspread.authorize(creds)
 else:
-    # OAuth Client ID JSON holatida
-    client_config = creds_dict.get("installed") or creds_dict.get("web") or creds_dict
-    creds = OAuthCredentials.from_authorized_user_info(client_config, scopes=SCOPE)
-
-gc = gspread.authorize(creds)
+    # OAuth Client ID fayli uchun
+    gc, creds = gspread.oauth_from_dict(creds_dict)
 
 SHEET_NAME = os.environ.get("SHEET_NAME", "Cold Email Leads")
 sheet = gc.open(SHEET_NAME).sheet1
