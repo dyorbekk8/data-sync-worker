@@ -25,7 +25,7 @@ if not creds_json:
 
 creds_dict = json.loads(creds_json)
 
-# OAuth 2.0 hamda Service Account JSON va'riyantlarini avtomatik ajratish
+# OAuth 2.0 hamda Service Account avtomatik integratsiyasi
 if "installed" in creds_dict or "web" in creds_dict:
     from google.oauth2.credentials import Credentials as OAuthCredentials
     info = creds_dict.get("installed") or creds_dict.get("web")
@@ -62,7 +62,7 @@ UZB_TZ = timezone(timedelta(hours=5))
 # GLOBAL XOTIRA
 GLOBAL_SENT_CACHE = set()
 
-# O'z pochtalarimiz ro'yxati (Bularni Lead deb adashtirmasligi uchun)
+# O'z pochtalarimiz ro'yxati
 MY_SENDER_EMAILS = set(acc['email'].lower() for acc in ACCOUNTS)
 
 def get_uzb_now():
@@ -123,7 +123,7 @@ def update_sent_total_and_replies_summary(all_values):
                 sent_yes_count += 1
 
             replied_status = row[3].strip().upper() if len(row) > 3 else ''
-            replied_to_my_email = row[5].strip() if len(row) > 5 else '' # F ustun
+            replied_to_my_email = row[5].strip() if len(row) > 5 else ''
 
             if replied_status == 'YES!' and replied_to_my_email:
                 my_replied_senders.append(replied_to_my_email)
@@ -170,7 +170,7 @@ def check_replies():
             print("📭 Hozircha tekshirish uchun yangi yuborilgan xatlar yo'q.")
             return
 
-        print("🔍 IMAP: Javoblar qidirilmoqda (O'zingizning xatlaringiz inkor qilinadi)...")
+        print("🔍 IMAP: Javoblar qidirilmoqda...")
         batch_updates_for_replies = []
         
         IGNORE_PATTERNS = [
@@ -185,11 +185,12 @@ def check_replies():
                 mail.login(acc['email'], acc['password'])
                 mail.select('INBOX')
 
+                # Tejamkor va tezkor IMAP qidiruvi
                 status, messages = mail.search(None, 'ALL')
 
                 if status == 'OK' and messages[0]:
                     msg_nums = messages[0].split()
-                    recent_nums = msg_nums[-20:] # Oxirgi 20 ta xat
+                    recent_nums = msg_nums[-20:]
 
                     for num in recent_nums:
                         res, msg_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
@@ -207,7 +208,6 @@ def check_replies():
 
                                 if from_addr in lead_map:
                                     row_num = lead_map[from_addr]
-                                    
                                     batch_updates_for_replies.append({'range': f'D{row_num}', 'values': [['YES!']]})
                                     batch_updates_for_replies.append({'range': f'F{row_num}', 'values': [[acc['email']]]})
                                     
@@ -215,7 +215,7 @@ def check_replies():
                                     del lead_map[from_addr] 
 
                 mail.logout()
-            except Exception as e:
+            except Exception:
                 pass 
 
         if batch_updates_for_replies:
@@ -234,28 +234,31 @@ def calculate_daily_limit(acc, days_passed):
 
 def main():
     print("🚀 GitHub Actions (Cron) tizimi ishga tushdi...")
+    
+    # 1. Obuna javoblarini tekshirish
     check_replies()
 
-    # Barcha mavjud pochtalar soniga qarab dinamik dinamika (har yoqilganda 3 baravar ko'p xat yuboradi)
+    # 2. Sarlavhalarni tayyorlash (Sikldan tashqarida 1 marta bajariladi)
+    try:
+        sheet.batch_update([
+            {'range': 'P1', 'values': [['FollowupStage']]},
+            {'range': 'Q1', 'values': [['LastFUSentTime']]}
+        ])
+    except Exception as e:
+        print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}")
+
     EMAILS_PER_RUN = len(ACCOUNTS) * 3
-    
     account_index = 0
     emails_sent_this_session = 0
 
     while emails_sent_this_session < EMAILS_PER_RUN:
-        time.sleep(2)
+        time.sleep(1)
         all_values = sheet.get_all_values()
         if len(all_values) <= 1:
             print("✅ TUGADI: Sheets bo'sh yoki hamma xatlar yuborib bo'lindi.")
             break
 
         rows = all_values[1:]
-
-        # Header yaratish (P1 va Q1)
-        sheet.batch_update([
-            {'range': 'P1', 'values': [['FollowupStage']]},
-            {'range': 'Q1', 'values': [['LastFUSentTime']]}
-        ])
 
         pending_idx = None
         pending_lead = None
@@ -270,8 +273,8 @@ def main():
             status_val = row[2].strip().upper() if len(row) > 2 else ''
             reply_val = row[3].strip().upper() if len(row) > 3 else ''
             
-            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni (Index 15)
-            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q ustuni (Index 16) yoki K ustuni
+            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni
+            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q yoki K ustuni
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
@@ -280,17 +283,14 @@ def main():
                     last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
                     days_diff = (now_uzb - last_time).total_seconds() / 86400
 
-                    # FU 1: 2 kundan so'ng
                     if fu_stage == 0 and days_diff >= 2:
                         pending_idx = idx + 2
                         next_stage = 1
                         is_followup = True
-                    # FU 2: 1-FU dan 3 kundan so'ng
                     elif fu_stage == 1 and days_diff >= 3:
                         pending_idx = idx + 2
                         next_stage = 2
                         is_followup = True
-                    # FU 3: 2-FU dan 2 kundan so'ng
                     elif fu_stage == 2 and days_diff >= 2:
                         pending_idx = idx + 2
                         next_stage = 3
@@ -300,7 +300,7 @@ def main():
                         pending_lead = {
                             'Email': email_val,
                             'Name': row[1].strip() if len(row) > 1 else '',
-                            'SenderEmail': row[4].strip() if len(row) > 4 else '' # E ustun
+                            'SenderEmail': row[4].strip() if len(row) > 4 else ''
                         }
                         break
                 except Exception:
@@ -386,7 +386,6 @@ def main():
 
         selected_acc = None
         if is_followup and pending_lead.get('SenderEmail'):
-            # Follow-up birinchi xat yuborilgan o'sha pochta orqali ketadi
             for acc in ACCOUNTS:
                 if acc['email'].lower() == pending_lead['SenderEmail'].lower():
                     selected_acc = acc
@@ -474,7 +473,7 @@ def main():
         print(f"⏳ {delay} sekund kutilmoqda...\n")
         time.sleep(delay)
 
-    print(f"🏁 Sessiya yakunlandi: {emails_sent_this_session} ta xat jo'natildi. Dastur keyingi jadvalgacha uyquga ketdi.")
+    print(f"🏁 Sessiya yakunlandi: {emails_sent_this_session} ta xat jo'natildi.")
 
 if __name__ == "__main__":
     main()
