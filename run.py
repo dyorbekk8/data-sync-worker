@@ -13,6 +13,11 @@ import gspread
 from sender import ACCOUNTS
 from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME
 
+import os
+import json
+import gspread
+from google.oauth2.credentials import Credentials as OAuthCredentials
+
 # --- GOOGLE SHEETS SETUP ---
 SCOPE = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -25,14 +30,16 @@ if not creds_json:
 
 creds_dict = json.loads(creds_json)
 
-# Service Account va OAuth Client ID JSON moslashuvi:
+# GitHub Secrets'dagi toza OAuth Authorized User strukturasiga moslash:
 if "client_email" in creds_dict:
+    # Service Account uchun
     from google.oauth2.service_account import Credentials as ServiceAccountCredentials
     creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPE)
-    gc = gspread.authorize(creds)
 else:
-    # OAuth Client ID fayli uchun
-    gc, creds = gspread.oauth_from_dict(creds_dict)
+    # Refresh token'li OAuth uchun (Brauzer so'ramaydi)
+    creds = OAuthCredentials.from_authorized_user_info(creds_dict, scopes=SCOPE)
+
+gc = gspread.authorize(creds)
 
 SHEET_NAME = os.environ.get("SHEET_NAME", "Cold Email Leads")
 sheet = gc.open(SHEET_NAME).sheet1
