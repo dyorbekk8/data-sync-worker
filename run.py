@@ -9,7 +9,6 @@ from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gspread
-from google.oauth2.service_account import Credentials
 
 from sender import ACCOUNTS
 from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
@@ -25,7 +24,33 @@ if not creds_json:
     raise ValueError("GOOGLE_CREDENTIALS environment variable topilmadi!")
 
 creds_dict = json.loads(creds_json)
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
+
+# OAuth 2.0 hamda Service Account JSON va'riyantlarini avtomatik ajratish
+if "installed" in creds_dict or "web" in creds_dict:
+    from google.oauth2.credentials import Credentials as OAuthCredentials
+    info = creds_dict.get("installed") or creds_dict.get("web")
+    creds = OAuthCredentials(
+        token=info.get("token"),
+        refresh_token=info.get("refresh_token"),
+        token_uri=info.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id=info.get("client_id"),
+        client_secret=info.get("client_secret"),
+        scopes=SCOPE
+    )
+elif "refresh_token" in creds_dict and "client_id" in creds_dict:
+    from google.oauth2.credentials import Credentials as OAuthCredentials
+    creds = OAuthCredentials(
+        token=creds_dict.get("token"),
+        refresh_token=creds_dict.get("refresh_token"),
+        token_uri=creds_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id=creds_dict.get("client_id"),
+        client_secret=creds_dict.get("client_secret"),
+        scopes=SCOPE
+    )
+else:
+    from google.oauth2.service_account import Credentials as SACredentials
+    creds = SACredentials.from_service_account_info(creds_dict, scopes=SCOPE)
+
 gc = gspread.authorize(creds)
 
 SHEET_NAME = os.environ.get("SHEET_NAME", "Cold Email Leads")
@@ -211,7 +236,7 @@ def main():
     print("🚀 GitHub Actions (Cron) tizimi ishga tushdi...")
     check_replies()
 
-   # Barcha mavjud pochtalar soniga qarab dinamik dinamika (har yoqilganda 3 baravar ko'p xat yuboradi)
+    # Barcha mavjud pochtalar soniga qarab dinamik dinamika (har yoqilganda 3 baravar ko'p xat yuboradi)
     EMAILS_PER_RUN = len(ACCOUNTS) * 3
     
     account_index = 0
