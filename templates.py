@@ -50,3 +50,34 @@ Best, Diyor
 Portfolio: http://diyor.site"""
     }
 ]
+
+# FOLLOW-UP SHABLONLARI (1, 2 VA 3-BOSQICH)
+FOLLOWUP_TEMPLATES = {
+    1: {
+        "subject": "Re: {original_subject}",
+        "body": """Hi {name},
+
+I know your inbox is probably flooded, so I wanted to bring this to the top of your inbox.
+
+Best,
+Diyor"""
+    },
+    2: {
+        "subject": "Re: {original_subject}",
+        "body": """Hi {name},
+
+Reaching out to you is harder than reaching out to the president :)
+
+Best,
+Diyor"""
+    },
+    3: {
+        "subject": "Re: {original_subject}",
+        "body": """Hi {name},
+
+Quick thought — we recently helped a client rebuild their web platform, which boosted their client conversions significantly.
+
+Best,
+Diyor"""
+    }
+}
