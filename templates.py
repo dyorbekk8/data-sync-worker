@@ -24,14 +24,14 @@ TEMPLATES_WITHOUT_NAME = [
     {
         "subject": "I don't waste your time!",
         "body": """I know you're busy, so this will only take 20 seconds!
-I admire the work you're doing — it’s clear you guys are experts in your field.
+I really admire the work you're doing — it’s clear you guys are experts in your field.
 
-The only thing missing is a professional digital home; without it, you're losing leads to competitors who are just easier to find online.
+The only thing missing is a digital home; without it, you're losing leads to competitors who are just easier to find online.
 
 So I built an entire website for you, want to see?
 30-day moneyback guarantee!
 
-Best, Diyor | DEV
+Best, Diyor
 Portfolio: http://diyor.site"""
     },
     
@@ -55,29 +55,14 @@ Portfolio: http://diyor.site"""
 FOLLOWUP_TEMPLATES = {
     1: {
         "subject": "Re: {original_subject}",
-        "body": """Hi {name},
-
-I know your inbox is probably flooded, so I wanted to bring this to the top of your inbox.
-
-Best,
-Diyor"""
+        "body": "I know your inbox is probably flooded, so I wanted to bring this to the top of your inbox."
     },
     2: {
         "subject": "Re: {original_subject}",
-        "body": """Hi {name},
-
-Reaching out to you is harder than reaching out to the president :)
-
-Best,
-Diyor"""
+        "body": "Reaching out to you is harder than reaching out to the president :)"
     },
     3: {
         "subject": "Re: {original_subject}",
-        "body": """Hi {name},
-
-Quick thought — we recently helped a client rebuild their web platform, which boosted their client conversions significantly.
-
-Best,
-Diyor"""
+        "body": "Quick thought — we recently helped a client rebuild their web platform, which boosted their client conversions significantly."
     }
 }
