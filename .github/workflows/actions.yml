@@ -1,36 +1,36 @@
-name: Deploy Modal Automation
+import modal
+import time
+import random
 
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+app = modal.App("cold-email-continuous")
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+# Kerakli kutubxonalar
+image = modal.Image.debian_slim().pip_install(
+    "gspread", 
+    "google-auth", 
+    "python-dotenv"
+)
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Modal
-        run: pip install modal
-
-      - name: Create Modal Secret automatically
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
-        run: |
-          modal secret create email-secrets GSPREAD_CREDENTIALS="$GSPREAD_CREDENTIALS" --force
-
-      - name: Deploy to Modal Server
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: modal deploy app.py
+# Har 1 minutda avtomatik tekshirib, yangi lead bor-yo'qligini nazorat qiladi
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("email-secrets")],
+    schedule=modal.Period(minutes=1), # Modal har 1 minutda buni o'zi avtomat yuritadi!
+    timeout=300
+)
+def run_job():
+    import run # run.py faylingiz
+    
+    print("Modal orqali yuborish tekshirilmoqda...")
+    
+    try:
+        # run.py ichidagi asosiy funksiyani chaqiring
+        # Masalan run.main() yoki sizda qanday nomlangan bo'lsa
+        if hasattr(run, 'main'):
+            run.main()
+        elif hasattr(run, 'start'):
+            run.start()
+        else:
+            print("run.py ichidan ishga tushirish funksiyasi topilmadi!")
+    except Exception as e:
+        print(f"Xatolik yuz berdi: {e}")
