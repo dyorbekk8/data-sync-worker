@@ -185,7 +185,6 @@ def check_replies():
                 mail.login(acc['email'], acc['password'])
                 mail.select('INBOX')
 
-                # Tejamkor va tezkor IMAP qidiruvi
                 status, messages = mail.search(None, 'ALL')
 
                 if status == 'OK' and messages[0]:
@@ -233,12 +232,9 @@ def calculate_daily_limit(acc, days_passed):
     return min(base_limit, 50) if acc['type'] == 'gmail' else min(base_limit, 100)
 
 def main():
-    print("🚀 GitHub Actions (Cron) tizimi ishga tushdi...")
-    
-    # 1. Obuna javoblarini tekshirish
-    check_replies()
+    print("🚀 Uzluksiz (24/7) yuborish tizimi ishga tushdi...")
 
-    # 2. Sarlavhalarni tayyorlash (Sikldan tashqarida 1 marta bajariladi)
+    # Sarlavhalarni tayyorlash
     try:
         sheet.batch_update([
             {'range': 'P1', 'values': [['FollowupStage']]},
@@ -247,16 +243,19 @@ def main():
     except Exception as e:
         print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}")
 
-    EMAILS_PER_RUN = len(ACCOUNTS) * 3
     account_index = 0
-    emails_sent_this_session = 0
 
-    while emails_sent_this_session < EMAILS_PER_RUN:
+    # 24/7 UZLUKSIZ ISHLASH SIKLI
+    while True:
+        # Har bir aylanish boshida yangi kelgan javoblarni tekshirish
+        check_replies()
+
         time.sleep(1)
         all_values = sheet.get_all_values()
         if len(all_values) <= 1:
-            print("✅ TUGADI: Sheets bo'sh yoki hamma xatlar yuborib bo'lindi.")
-            break
+            print("✅ Hozircha yuboriladigan xat yo'q. 3 daqiqa kutib qayta tekshiriladi...")
+            time.sleep(180)
+            continue
 
         rows = all_values[1:]
 
@@ -328,9 +327,10 @@ def main():
                     break
 
         if not pending_lead:
-            print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q!")
+            print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...")
             update_sent_total_and_replies_summary(sheet.get_all_values())
-            break
+            time.sleep(180)
+            continue
 
         lead_email_clean = pending_lead['Email'].lower()
         if not is_followup:
@@ -405,10 +405,11 @@ def main():
                     break
 
         if not selected_acc:
-            print("🛑 Barcha pochtalar limitga yetdi. Skript ishni vaqtincha to'xtatadi.")
+            print("🛑 Barcha pochtalar bugungi limitga yetdi. 10 daqiqa kutilmoqda...")
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "")
-            break
+            time.sleep(600)
+            continue
 
         lead_email = pending_lead['Email']
         lead_name = pending_lead['Name']
@@ -464,7 +465,6 @@ def main():
 
             curr_vals = sheet.get_all_values()
             update_sent_total_and_replies_summary(curr_vals)
-            emails_sent_this_session += 1
         else:
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "FAILED")
@@ -472,8 +472,6 @@ def main():
         delay = random.randint(15, 25)
         print(f"⏳ {delay} sekund kutilmoqda...\n")
         time.sleep(delay)
-
-    print(f"🏁 Sessiya yakunlandi: {emails_sent_this_session} ta xat jo'natildi.")
 
 if __name__ == "__main__":
     main()
