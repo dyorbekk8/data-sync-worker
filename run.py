@@ -9,14 +9,10 @@ from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gspread
+from google.oauth2.service_account import Credentials
 
 from sender import ACCOUNTS
-from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME
-
-import os
-import json
-import gspread
-from google.oauth2.credentials import Credentials as OAuthCredentials
+from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
 
 # --- GOOGLE SHEETS SETUP ---
 SCOPE = [
@@ -29,16 +25,7 @@ if not creds_json:
     raise ValueError("GOOGLE_CREDENTIALS environment variable topilmadi!")
 
 creds_dict = json.loads(creds_json)
-
-# GitHub Secrets'dagi toza OAuth Authorized User strukturasiga moslash:
-if "client_email" in creds_dict:
-    # Service Account uchun
-    from google.oauth2.service_account import Credentials as ServiceAccountCredentials
-    creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPE)
-else:
-    # Refresh token'li OAuth uchun (Brauzer so'ramaydi)
-    creds = OAuthCredentials.from_authorized_user_info(creds_dict, scopes=SCOPE)
-
+creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
 gc = gspread.authorize(creds)
 
 SHEET_NAME = os.environ.get("SHEET_NAME", "Cold Email Leads")
@@ -224,8 +211,8 @@ def main():
     print("🚀 GitHub Actions (Cron) tizimi ishga tushdi...")
     check_replies()
 
-    # Barcha mavjud pochtalar soniga qarab dinamik dinamika
-    EMAILS_PER_RUN = len(ACCOUNTS) 
+   # Barcha mavjud pochtalar soniga qarab dinamik dinamika (har yoqilganda 3 baravar ko'p xat yuboradi)
+    EMAILS_PER_RUN = len(ACCOUNTS) * 3
     
     account_index = 0
     emails_sent_this_session = 0
@@ -239,40 +226,91 @@ def main():
 
         rows = all_values[1:]
 
-        for row in rows:
-            e_val = row[0].strip().lower() if len(row) > 0 else ''
-            s_val = row[2].strip().upper() if len(row) > 2 else ''
-            if e_val and s_val in ['YES', 'FAILED', 'SENDING...']:
-                GLOBAL_SENT_CACHE.add(e_val)
+        # Header yaratish (P1 va Q1)
+        sheet.batch_update([
+            {'range': 'P1', 'values': [['FollowupStage']]},
+            {'range': 'Q1', 'values': [['LastFUSentTime']]}
+        ])
 
         pending_idx = None
         pending_lead = None
+        is_followup = False
+        next_stage = 0
 
+        now_uzb = get_uzb_now()
+
+        # 1. BIRINCHI NAVBATDA FOLLOW-UP'LARNI TEKSHIRISH
         for idx, row in enumerate(rows):
             email_val = row[0].strip() if len(row) > 0 else ''
-            email_lower = email_val.lower()
             status_val = row[2].strip().upper() if len(row) > 2 else ''
+            reply_val = row[3].strip().upper() if len(row) > 3 else ''
             
-            if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
-                pending_idx = idx + 2
-                pending_lead = {
-                    'Email': email_val,
-                    'Name': row[1].strip() if len(row) > 1 else ''
-                }
-                current_d_val = row[3].strip() if len(row) > 3 else ''
-                break
+            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni (Index 15)
+            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q ustuni (Index 16) yoki K ustuni
+
+            fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
+
+            if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 3 and last_fu_time_str:
+                try:
+                    last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
+                    days_diff = (now_uzb - last_time).total_seconds() / 86400
+
+                    # FU 1: 2 kundan so'ng
+                    if fu_stage == 0 and days_diff >= 2:
+                        pending_idx = idx + 2
+                        next_stage = 1
+                        is_followup = True
+                    # FU 2: 1-FU dan 3 kundan so'ng
+                    elif fu_stage == 1 and days_diff >= 3:
+                        pending_idx = idx + 2
+                        next_stage = 2
+                        is_followup = True
+                    # FU 3: 2-FU dan 2 kundan so'ng
+                    elif fu_stage == 2 and days_diff >= 2:
+                        pending_idx = idx + 2
+                        next_stage = 3
+                        is_followup = True
+
+                    if is_followup:
+                        pending_lead = {
+                            'Email': email_val,
+                            'Name': row[1].strip() if len(row) > 1 else '',
+                            'SenderEmail': row[4].strip() if len(row) > 4 else '' # E ustun
+                        }
+                        break
+                except Exception:
+                    pass
+
+        # 2. AGAR FOLLOW-UP YO'Q BO'LSA, YANGI LEAD QIDIRISH
+        if not pending_lead:
+            for row in rows:
+                e_val = row[0].strip().lower() if len(row) > 0 else ''
+                s_val = row[2].strip().upper() if len(row) > 2 else ''
+                if e_val and s_val in ['YES', 'FAILED', 'SENDING...']:
+                    GLOBAL_SENT_CACHE.add(e_val)
+
+            for idx, row in enumerate(rows):
+                email_val = row[0].strip() if len(row) > 0 else ''
+                email_lower = email_val.lower()
+                status_val = row[2].strip().upper() if len(row) > 2 else ''
+                
+                if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
+                    pending_idx = idx + 2
+                    pending_lead = {
+                        'Email': email_val,
+                        'Name': row[1].strip() if len(row) > 1 else ''
+                    }
+                    break
 
         if not pending_lead:
-            print("✅ Yangi lead yo'q. Barcha xatlar yuborib bo'lindi!")
+            print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q!")
             update_sent_total_and_replies_summary(sheet.get_all_values())
             break
 
         lead_email_clean = pending_lead['Email'].lower()
-        if lead_email_clean in GLOBAL_SENT_CACHE:
-            continue
-
-        GLOBAL_SENT_CACHE.add(lead_email_clean)
-        sheet.update_cell(pending_idx, 3, "SENDING...")
+        if not is_followup:
+            GLOBAL_SENT_CACHE.add(lead_email_clean)
+            sheet.update_cell(pending_idx, 3, "SENDING...")
 
         today_uzb = get_uzb_now()
         today_str = today_uzb.strftime("%Y-%m-%d")
@@ -322,52 +360,75 @@ def main():
                 }
 
         selected_acc = None
-        num_accounts = len(ACCOUNTS)
-        
-        for _ in range(num_accounts):
-            acc = ACCOUNTS[account_index % num_accounts]
-            account_index += 1
-            
-            stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0})
-            max_daily = calculate_daily_limit(acc, days_passed)
+        if is_followup and pending_lead.get('SenderEmail'):
+            # Follow-up birinchi xat yuborilgan o'sha pochta orqali ketadi
+            for acc in ACCOUNTS:
+                if acc['email'].lower() == pending_lead['SenderEmail'].lower():
+                    selected_acc = acc
+                    break
 
-            if stats['today_count'] < max_daily:
-                selected_acc = acc
-                break
+        if not selected_acc:
+            num_accounts = len(ACCOUNTS)
+            for _ in range(num_accounts):
+                acc = ACCOUNTS[account_index % num_accounts]
+                account_index += 1
+                
+                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0})
+                max_daily = calculate_daily_limit(acc, days_passed)
+
+                if stats['today_count'] < max_daily:
+                    selected_acc = acc
+                    break
 
         if not selected_acc:
             print("🛑 Barcha pochtalar limitga yetdi. Skript ishni vaqtincha to'xtatadi.")
-            sheet.update_cell(pending_idx, 3, "")
+            if not is_followup:
+                sheet.update_cell(pending_idx, 3, "")
             break
 
         lead_email = pending_lead['Email']
         lead_name = pending_lead['Name']
 
-        if lead_name:
-            all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
-            selected = random.choice(all_templates)
-            subject = selected['subject'].format(name=lead_name)
-            body = selected['body'].format(name=lead_name)
+        if is_followup:
+            fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
+            subject = fu_tmpl['subject'].format(original_subject="Quick question")
+            body = fu_tmpl['body']
+            print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}")
         else:
-            selected = random.choice(TEMPLATES_WITHOUT_NAME)
-            subject = selected['subject']
-            body = selected['body']
+            if lead_name:
+                all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
+                selected = random.choice(all_templates)
+                subject = selected['subject'].format(name=lead_name)
+                body = selected['body'].format(name=lead_name)
+            else:
+                selected = random.choice(TEMPLATES_WITHOUT_NAME)
+                subject = selected['subject']
+                body = selected['body']
+            print(f"📧 Birinchi Xat yuborilmoqda: {selected_acc['email']} -> {lead_email}")
 
-        print(f"📧 Yuborilmoqda: {selected_acc['email']} -> {lead_email}")
         is_sent = send_email_real(selected_acc, lead_email, subject, body)
 
         if is_sent:
             uzb_time_str = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
-            row_updates = [
-                {'range': f'C{pending_idx}', 'values': [['YES']]},                     
-                {'range': f'E{pending_idx}', 'values': [[selected_acc['email']]]},     
-                {'range': 'K1', 'values': [['Time sent']]},                            
-                {'range': f'K{pending_idx}', 'values': [[uzb_time_str]]}               
-            ]
-            if not current_d_val:
-                row_updates.append({'range': f'D{pending_idx}', 'values': [['NO']]})   
+            
+            if is_followup:
+                sheet.batch_update([
+                    {'range': f'P{pending_idx}', 'values': [[next_stage]]},
+                    {'range': f'Q{pending_idx}', 'values': [[uzb_time_str]]}
+                ])
+            else:
+                row_updates = [
+                    {'range': f'C{pending_idx}', 'values': [['YES']]},                     
+                    {'range': f'E{pending_idx}', 'values': [[selected_acc['email']]]},     
+                    {'range': 'K1', 'values': [['Time sent']]},                            
+                    {'range': f'K{pending_idx}', 'values': [[uzb_time_str]]},
+                    {'range': f'P{pending_idx}', 'values': [[0]]},
+                    {'range': f'Q{pending_idx}', 'values': [[uzb_time_str]]}
+                ]
+                if len(row) <= 3 or not row[3].strip():
+                    row_updates.append({'range': f'D{pending_idx}', 'values': [['NO']]})   
 
-            sheet.batch_update(row_updates)
+                sheet.batch_update(row_updates)
 
             if selected_acc['email'] in sender_stats:
                 r = sender_stats[selected_acc['email']]['row']
@@ -381,7 +442,8 @@ def main():
             update_sent_total_and_replies_summary(curr_vals)
             emails_sent_this_session += 1
         else:
-            sheet.update_cell(pending_idx, 3, "FAILED")
+            if not is_followup:
+                sheet.update_cell(pending_idx, 3, "FAILED")
 
         delay = random.randint(15, 25)
         print(f"⏳ {delay} sekund kutilmoqda...\n")
