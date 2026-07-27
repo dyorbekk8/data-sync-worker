@@ -1,21 +1,16 @@
-name: Cold Email Automation Runner
+name: Deploy Modal Automation
 
 on:
-  schedule:
-    # Har 30 daqiqada ishlaydi (GitHub serverlari uchun eng barqaror va xavfsiz interval)
-    - cron: '*/30 * * * *'
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
-concurrency:
-  group: cold-email-runner
-  cancel-in-progress: false
-
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - name: Check out repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -23,13 +18,11 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install gspread google-auth
+      - name: Install Modal
+        run: pip install modal
 
-      - name: Run Automation Script
+      - name: Deploy to Modal Server
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_NAME: "Cold Email Leads"
-        run: python run.py
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy app.py
