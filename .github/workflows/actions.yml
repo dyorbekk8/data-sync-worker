@@ -3,7 +3,7 @@ name: Cold Email Worker
 on:
   workflow_dispatch: # Qo'lda xohlagan paytda bosib ishga tushirish uchun
   schedule:
-    - cron: '*/20 * * * *' # Har 20 daqiqada avtomatik ishlaydi
+    - cron: '0 */5 * * *' # Har 5 soatda avtomatik ishlaydi
 
 jobs:
   run-script:
