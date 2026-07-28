@@ -520,7 +520,7 @@ def main():
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "FAILED")
 
-        delay = random.randint(15, 25)
+        delay = random.randint(1, 2)
         print(f"⏳ {delay} sekund kutilmoqda...\n")
         time.sleep(delay)
 
