@@ -294,8 +294,6 @@ def main():
     except Exception as e:
         print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}")
 
-    account_index = 0
-
     # 24/7 UZLUKSIZ ISHLASH SIKLI
     while True:
         # Har bir aylanish boshida yangi kelgan javoblarni tekshirish
@@ -443,17 +441,19 @@ def main():
                     break
 
         if not selected_acc:
-            num_accounts = len(ACCOUNTS)
-            for _ in range(num_accounts):
-                acc = ACCOUNTS[account_index % num_accounts]
-                account_index += 1
-                
+            # --- BALANSLI TAQSIMLASH (LOAD BALANCING) ---
+            # Bugungi kunda eng kam xat yuborgan (today_count eng kichik) akkauntni birinchi tanlaymiz
+            available_accounts = []
+            for acc in ACCOUNTS:
                 stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0})
                 max_daily = calculate_daily_limit(acc, days_passed)
-
                 if stats['today_count'] < max_daily:
-                    selected_acc = acc
-                    break
+                    available_accounts.append((acc, stats['today_count']))
+            
+            if available_accounts:
+                # today_count bo'yicha o'sish tartibida saralaymiz (eng kami birinchi turadi)
+                available_accounts.sort(key=lambda x: x[1])
+                selected_acc = available_accounts[0][0]
 
         if not selected_acc:
             print("🛑 Barcha pochtalar bugungi limitga yetdi. 10 daqiqa kutilmoqda...")
@@ -502,7 +502,7 @@ def main():
                     {'range': f'Q{pending_idx}', 'values': [[uzb_time_str]]}
                 ]
                 if len(row) <= 3 or not row[3].strip():
-                    row_updates.append({'range': f'D{pending_idx}', 'values': [['NO']]})   
+                    row_updates.append({'range': f'D{pending_idx}', 'values': [['NO']]})    
 
                 sheet.batch_update(row_updates)
 
