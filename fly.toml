@@ -4,4 +4,4 @@ primary_region = "fra"
 [build]
 
 [processes]
-  worker = "python run.py"
+  worker = "python -u run.py"
