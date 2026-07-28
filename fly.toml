@@ -1,7 +1,0 @@
-app = "data-sync-worker"
-primary_region = "fra"
-
-[build]
-
-[processes]
-  worker = "python -u run.py"
