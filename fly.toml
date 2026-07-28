@@ -1,0 +1,7 @@
+app = "my-cold-email-bot"
+primary_region = "fra"
+
+[build]
+
+[processes]
+  app = "python run.py"
