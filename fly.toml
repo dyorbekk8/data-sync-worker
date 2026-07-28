@@ -1,7 +1,7 @@
-app = "my-cold-email-bot"
+app = "data-sync-worker"
 primary_region = "fra"
 
 [build]
 
 [processes]
-  app = "python run.py"
+  worker = "python run.py"
