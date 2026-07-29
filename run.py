@@ -6,6 +6,8 @@ import smtplib
 import imaplib
 import email
 import socket
+import traceback
+import sys
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -49,31 +51,28 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# --- CREDENTIALS YUKLASH (RAILWAY VA LOCAL UCHUN OPTIMALLASHTIRILGAN) ---
+# --- CREDENTIALS YUKLASH ---
 CREDS_FILE = "creds.json"
 creds_dict = None
 
-# 1. Avvalo creds.json faylini tekshiramiz
 if os.path.exists(CREDS_FILE):
     try:
         with open(CREDS_FILE, "r") as f:
             creds_dict = json.load(f)
     except Exception as e:
-        print(f"⚠️ creds.json faylini o'qishda xatolik: {e}")
+        print(f"⚠️ creds.json faylini o'qishda xatolik: {e}", flush=True)
 
-# 2. Agar fayl bo'lmasa, Railway / Environment Variables'dan o'qiymiz
 if not creds_dict:
     creds_json = os.environ.get("GOOGLE_CREDENTIALS") or os.environ.get("GOOGLE_OAUTH_JSON")
     if creds_json:
         try:
             creds_dict = json.loads(creds_json, strict=False)
         except Exception as e:
-            print(f"⚠️ Environment Variable'dan JSON parsing xatoligi: {e}")
+            print(f"⚠️ Environment Variable'dan JSON parsing xatoligi: {e}", flush=True)
 
 if not creds_dict:
     raise ValueError("❌ Na 'creds.json' fayli va na 'GOOGLE_CREDENTIALS' environment variable topildi!")
 
-# OAuth 2.0 va Service Account avtomatik integratsiyasi
 if "installed" in creds_dict or "web" in creds_dict:
     from google.oauth2.credentials import Credentials as OAuthCredentials
     info = creds_dict.get("installed") or creds_dict.get("web")
@@ -125,7 +124,7 @@ def save_to_sent_folder(acc, msg):
         mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
     except Exception as e:
-        print(f"⚠️ Sent papkasiga saqlashda xatolik ({acc['email']}): {e}")
+        print(f"⚠️ Sent papkasiga saqlashda IMAP xatolik ({acc['email']}): {e}", flush=True)
 
 def send_email_real(acc, to_email, subject, body):
     try:
@@ -149,14 +148,23 @@ def send_email_real(acc, to_email, subject, body):
         server.quit()
 
         if refused:
-            print(f"❌ Xat rad etildi: {refused}")
+            print(f"❌ XAT RAD ETILDI (Refused Recipients): {refused}", flush=True)
             return False
 
         save_to_sent_folder(acc, msg)
         return True
 
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌ SMTP AUTHENTICATION ERROR ({acc['email']}): Login yoki Parol noto'g'ri! Detal: {e}", flush=True)
+        return False
+    except smtplib.SMTPConnectError as e:
+        print(f"❌ SMTP CONNECT ERROR ({acc['email']}): Serverga ulanib bo'lmadi! Host: {smtp_host}:{smtp_port}. Detal: {e}", flush=True)
+        return False
+    except socket.timeout as e:
+        print(f"❌ SMTP TIMEOUT ERROR ({acc['email']}): Server javob berish vaqti tugadi (20s). Detal: {e}", flush=True)
     except Exception as e:
-        print(f"❌ SMTP XATOLIK ({acc['email']} -> {to_email}): {e}")
+        print(f"❌ UMUMIY SMTP XATOLIK ({acc['email']} -> {to_email}): {e}", flush=True)
+        traceback.print_exc()
         return False
 
 def update_sent_total_and_replies_summary(all_values):
@@ -196,10 +204,10 @@ def update_sent_total_and_replies_summary(all_values):
             })
 
         sheet.batch_update(updates)
-        print(f"📊 Statistika yangilandi: Sent Total = {sent_yes_count}, Replies = {len(my_replied_senders)}")
+        print(f"📊 Statistika yangilandi: Sent Total = {sent_yes_count}, Replies = {len(my_replied_senders)}", flush=True)
 
     except Exception as e:
-        print(f"⚠️ Totals va Replies yangilashda xatolik: {e}")
+        print(f"⚠️ Totals va Replies yangilashda xatolik: {e}", flush=True)
 
 def check_replies():
     try:
@@ -218,10 +226,10 @@ def check_replies():
                 lead_map[email_val] = idx + 2
 
         if not lead_map:
-            print("📭 Hozircha tekshirish uchun yangi yuborilgan xatlar yo'q.")
+            print("📭 Hozircha tekshirish uchun yangi yuborilgan xatlar yo'q.", flush=True)
             return
 
-        print("🔍 IMAP: Javoblar qidirilmoqda...")
+        print("🔍 IMAP: Javoblar qidirilmoqda...", flush=True)
         batch_updates_for_replies = []
         
         IGNORE_PATTERNS = [
@@ -261,48 +269,50 @@ def check_replies():
                                     batch_updates_for_replies.append({'range': f'D{row_num}', 'values': [['YES!']]})
                                     batch_updates_for_replies.append({'range': f'F{row_num}', 'values': [[acc['email']]]})
                                     
-                                    print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']}")
+                                    print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']}", flush=True)
                                     del lead_map[from_addr] 
 
                 mail.logout()
-            except Exception:
-                pass 
+            except Exception as e:
+                print(f"⚠️ IMAP Xatolik ({acc['email']}): {e}", flush=True)
 
         if batch_updates_for_replies:
             sheet.batch_update(batch_updates_for_replies)
             latest_vals = sheet.get_all_values()
             update_sent_total_and_replies_summary(latest_vals)
         else:
-            print("📭 Yangi javoblar topilmadi.")
+            print("📭 Yangi javoblar topilmadi.", flush=True)
 
     except Exception as e:
-        print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}")
+        print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    base_limit = 15 + (days_passed * 5)
-    return min(base_limit, 50) if acc['type'] == 'gmail' else min(base_limit, 100)
+    if acc.get('type') == 'gmail':
+        base_limit = 35 + (days_passed * 5)
+        return min(base_limit, 50)
+    else:
+        base_limit = 40 + (days_passed * 5)
+        return min(base_limit, 100)
 
 def main():
-    print("🚀 Uzluksiz (24/7) yuborish tizimi Railway'da ishga tushdi...")
+    print(f"🚀 Uzluksiz yuborish tizimi ishga tushdi... (Jamlangan akkauntlar soni: {len(ACCOUNTS)})", flush=True)
 
-    # Sarlavhalarni tayyorlash
     try:
         sheet.batch_update([
+            {'range': 'F1', 'values': [['MaxLimit']]},
             {'range': 'P1', 'values': [['FollowupStage']]},
             {'range': 'Q1', 'values': [['LastFUSentTime']]}
         ])
     except Exception as e:
-        print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}")
+        print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}", flush=True)
 
-    # 24/7 UZLUKSIZ ISHLASH SIKLI
     while True:
-        # Har bir aylanish boshida yangi kelgan javoblarni tekshirish
         check_replies()
 
         time.sleep(1)
         all_values = sheet.get_all_values()
         if len(all_values) <= 1:
-            print("✅ Hozircha yuboriladigan xat yo'q. 3 daqiqa kutib qayta tekshiriladi...")
+            print("✅ Sheet bo'sh. 3 daqiqa kutib qayta tekshiriladi...", flush=True)
             time.sleep(180)
             continue
 
@@ -351,8 +361,8 @@ def main():
                             'SenderEmail': row[4].strip() if len(row) > 4 else ''
                         }
                         break
-                except Exception:
-                    pass
+                except Exception as ex:
+                    print(f"⚠️ Sana parsing xatosi (Qator {idx+2}): {ex}", flush=True)
 
         # 2. AGAR FOLLOW-UP YO'Q BO'LSA, YANGI LEAD QIDIRISH
         if not pending_lead:
@@ -376,7 +386,7 @@ def main():
                     break
 
         if not pending_lead:
-            print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...")
+            print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...", flush=True)
             update_sent_total_and_replies_summary(sheet.get_all_values())
             time.sleep(180)
             continue
@@ -417,6 +427,8 @@ def main():
         sheet.update_cell(1, 9, "TodaySent") 
 
         sender_stats = {}
+        limit_updates = []
+
         for idx, row in enumerate(rows):
             g_val = row[6].strip() if len(row) > 6 else '' 
             h_val = row[7].strip() if len(row) > 7 else '0' 
@@ -427,11 +439,23 @@ def main():
                 if is_new_day:
                     sheet.update_cell(idx + 2, 9, 0)
 
+                acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower() == g_val.lower()), {'type': 'domain'})
+                max_daily = calculate_daily_limit(acc_obj, days_passed)
+
+                limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
+
                 sender_stats[g_val] = {
                     'row': idx + 2,
                     'count': int(h_val) if h_val.isdigit() else 0,
-                    'today_count': today_cnt
+                    'today_count': today_cnt,
+                    'max_daily': max_daily
                 }
+
+        if limit_updates:
+            try:
+                sheet.batch_update(limit_updates)
+            except Exception as e:
+                print(f"⚠️ F ustuniga limitlarni yozishda xatolik: {e}", flush=True)
 
         selected_acc = None
         if is_followup and pending_lead.get('SenderEmail'):
@@ -441,22 +465,18 @@ def main():
                     break
 
         if not selected_acc:
-            # --- BALANSLI TAQSIMLASH (LOAD BALANCING) ---
-            # Bugungi kunda eng kam xat yuborgan (today_count eng kichik) akkauntni birinchi tanlaymiz
             available_accounts = []
             for acc in ACCOUNTS:
-                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0})
-                max_daily = calculate_daily_limit(acc, days_passed)
-                if stats['today_count'] < max_daily:
+                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0, 'max_daily': calculate_daily_limit(acc, days_passed)})
+                if stats['today_count'] < stats['max_daily']:
                     available_accounts.append((acc, stats['today_count']))
             
             if available_accounts:
-                # today_count bo'yicha o'sish tartibida saralaymiz (eng kami birinchi turadi)
                 available_accounts.sort(key=lambda x: x[1])
                 selected_acc = available_accounts[0][0]
 
         if not selected_acc:
-            print("🛑 Barcha pochtalar bugungi limitga yetdi. 10 daqiqa kutilmoqda...")
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan yoki G ustunida akkauntlar ko'rsatilmagan! 10 daqiqa kutilmoqda...", flush=True)
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "")
             time.sleep(600)
@@ -469,7 +489,7 @@ def main():
             fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
             subject = fu_tmpl['subject'].format(original_subject="Quick question")
             body = fu_tmpl['body']
-            print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}")
+            print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
         else:
             if lead_name:
                 all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
@@ -480,7 +500,7 @@ def main():
                 selected = random.choice(TEMPLATES_WITHOUT_NAME)
                 subject = selected['subject']
                 body = selected['body']
-            print(f"📧 Birinchi Xat yuborilmoqda: {selected_acc['email']} -> {lead_email}")
+            print(f"📧 Birinchi Xat yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
 
         is_sent = send_email_real(selected_acc, lead_email, subject, body)
 
@@ -517,11 +537,12 @@ def main():
             curr_vals = sheet.get_all_values()
             update_sent_total_and_replies_summary(curr_vals)
         else:
+            print(f"❌ XAT YUBORILMADI (Status FAILED deb belgilandi): {selected_acc['email']} -> {lead_email}", flush=True)
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "FAILED")
 
         delay = random.randint(9, 20)
-        print(f"⏳ {delay} sekund kutilmoqda...\n")
+        print(f"⏳ {delay} sekund kutilmoqda...\n", flush=True)
         time.sleep(delay)
 
 if __name__ == "__main__":
