@@ -119,7 +119,7 @@ def save_to_sent_folder(acc, msg):
     if acc.get('type') == 'gmail':
         return
     try:
-        mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=15)
+        mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
         mail.login(acc['email'], acc['password'])
         mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
@@ -240,7 +240,7 @@ def check_replies():
 
         for acc in ACCOUNTS:
             try:
-                mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=15)
+                mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
                 mail.login(acc['email'], acc['password'])
                 mail.select('INBOX')
 
