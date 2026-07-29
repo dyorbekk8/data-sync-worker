@@ -22,13 +22,13 @@ http://diyor.site - portfolio"""
 TEMPLATES_WITHOUT_NAME = [
     # 1-Xat va Subject
     {
-        "subject": "I don't waste your time!",
+        "subject": "I don't waste your time {name}",
         "body": """I know you're busy, so this will only take 20 seconds!
 I really admire the work you're doing — it’s clear you guys are experts in your field.
 
 The only thing missing is a digital home; without it, you're losing leads to competitors who are just easier to find online.
 
-So I built an entire website for you, want to see?
+So I built an entire website for you {name}, want to see?
 30-day moneyback guarantee!
 
 Best, Diyor
@@ -37,7 +37,7 @@ Portfolio: http://diyor.site"""
     
     # 3-Xat va Subject
     {
-        "subject": "I know your problem (CLICK)",
+        "subject": "I built this for you!",
         "body": """Hi,
 
 I'm a local web developer and a big fan of the work you're doing!
