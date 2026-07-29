@@ -358,6 +358,7 @@ def main():
                         pending_lead = {
                             'Email': email_val,
                             'Name': row[1].strip() if len(row) > 1 else '',
+                            'Company': row[17].strip() if len(row) > 17 else '',
                             'SenderEmail': row[4].strip() if len(row) > 4 else ''
                         }
                         break
@@ -381,7 +382,8 @@ def main():
                     pending_idx = idx + 2
                     pending_lead = {
                         'Email': email_val,
-                        'Name': row[1].strip() if len(row) > 1 else ''
+                        'Name': row[1].strip() if len(row) > 1 else '',
+                        'Company': row[17].strip() if len(row) > 17 else ''
                     }
                     break
 
@@ -484,6 +486,7 @@ def main():
 
         lead_email = pending_lead['Email']
         lead_name = pending_lead['Name']
+        lead_company = pending_lead['Company']
 
         if is_followup:
             fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
@@ -491,13 +494,17 @@ def main():
             body = fu_tmpl['body']
             print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
         else:
-            if lead_name:
+            if lead_name and lead_company:
                 all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
                 selected = random.choice(all_templates)
-                subject = selected['subject'].format(name=lead_name)
-                body = selected['body'].format(name=lead_name)
+                subject = selected['subject'].format(name=lead_name, company=lead_company)
+                body = selected['body'].format(name=lead_name, company=lead_company)
+            elif not lead_name and lead_company:
+                selected = random.choice(TEMPLATES_WITHOUT_NAME[:3])
+                subject = selected['subject'].format(company=lead_company)
+                body = selected['body'].format(company=lead_company)
             else:
-                selected = random.choice(TEMPLATES_WITHOUT_NAME)
+                selected = random.choice(TEMPLATES_WITHOUT_NAME[3:])
                 subject = selected['subject']
                 body = selected['body']
             print(f"📧 Birinchi Xat yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
