@@ -1,19 +1,21 @@
-name: Cold Email Worker
+name: Cold Email Automation Run
 
 on:
-  workflow_dispatch: # Qo'lda xohlagan paytda bosib ishga tushirish uchun
   schedule:
-    - cron: '0 */5 * * *' # Har 5 soatda avtomatik ishlaydi
+    # O'zbekiston vaqti bilan har 5 soatda (05:00, 10:00, 15:00, 20:00, 01:00)
+    - cron: '0 0,5,10,15,20 * * *'
+  workflow_dispatch: # Qo'lda ham "Run workflow" tugmasi bilan yurgazish uchun
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
@@ -21,10 +23,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install gspread google-auth
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run script
+      - name: Run python script
         env:
+          PYTHONUNBUFFERED: "1"
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_NAME: ${{ secrets.SHEET_NAME }}
-        run: python run.py
+          ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
+        run: python -u run.py
