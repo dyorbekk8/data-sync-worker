@@ -295,9 +295,6 @@ def calculate_daily_limit(acc, days_passed):
         return 70
 
 def process_single_lead(task_info):
-    """
-    Parallel ravishda bitta leadga xat yuborish funksiyasi
-    """
     pending_lead = task_info['pending_lead']
     pending_idx = task_info['pending_idx']
     is_followup = task_info['is_followup']
@@ -356,7 +353,6 @@ def main():
 
     while True:
         cycle_count += 1
-        # IMAP sekinlashtirmasligi uchun har 5 ta siklda 1 marta tekshiramiz
         if cycle_count % 5 == 1:
             check_replies()
 
@@ -370,15 +366,11 @@ def main():
         rows = all_values[1:]
         now_uzb = get_uzb_now()
 
-        # PARALLEL topshiriqlar ro'yxati (Max 2 ta)
         tasks_to_run = []
         used_lead_indices = set()
 
-        # 1. FOLLOW-UP LARDAN TEKSHIRISH VA TUSHIRISH
+        # 1. BIRINCHI SLOT: FAQAT 1 TA FOLLOW-UP OLADI
         for idx, row in enumerate(rows):
-            if len(tasks_to_run) >= 2:
-                break
-
             email_val = row[0].strip() if len(row) > 0 else ''
             status_val = row[2].strip().upper() if len(row) > 2 else ''
             reply_val = row[3].strip().upper() if len(row) > 3 else ''
@@ -420,44 +412,86 @@ def main():
                             'is_followup': True,
                             'next_stage': next_s
                         })
+                        break # FAQAT 1 TA FOLLOW-UP OLIB TO'XTAYDI
                 except Exception as ex:
                     print(f"⚠️ Sana parsing xatosi (Qator {idx+2}): {ex}", flush=True)
 
-        # 2. AGAR TASKLAR 2 TADA KAM BO'LSA, YANGI LEAD QO'SHISH (PARALLEL ISHLASH UCHUN)
-        if len(tasks_to_run) < 2:
-            for row in rows:
-                e_val = row[0].strip().lower() if len(row) > 0 else ''
-                s_val = row[2].strip().upper() if len(row) > 2 else ''
-                if e_val and s_val in ['YES', 'FAILED', 'SENDING...']:
-                    GLOBAL_SENT_CACHE.add(e_val)
+        # 2. IKKINCHI SLOT: FAQAT YANGI LEAD OLADI (AGAR MAX 2 TA BO'LMASA)
+        for row in rows:
+            e_val = row[0].strip().lower() if len(row) > 0 else ''
+            s_val = row[2].strip().upper() if len(row) > 2 else ''
+            if e_val and s_val in ['YES', 'FAILED', 'SENDING...']:
+                GLOBAL_SENT_CACHE.add(e_val)
 
+        for idx, row in enumerate(rows):
+            if len(tasks_to_run) >= 2:
+                break
+
+            p_idx = idx + 2
+            if p_idx in used_lead_indices:
+                continue
+
+            email_val = row[0].strip() if len(row) > 0 else ''
+            email_lower = email_val.lower()
+            status_val = row[2].strip().upper() if len(row) > 2 else ''
+            
+            if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
+                GLOBAL_SENT_CACHE.add(email_lower)
+                used_lead_indices.add(p_idx)
+                sheet.update_cell(p_idx, 3, "SENDING...")
+                
+                tasks_to_run.append({
+                    'pending_idx': p_idx,
+                    'pending_lead': {
+                        'Email': email_val,
+                        'Name': row[1].strip() if len(row) > 1 else '',
+                        'Company': row[17].strip() if len(row) > 17 else ''
+                    },
+                    'is_followup': False,
+                    'next_stage': 0
+                })
+
+        # 3. AGAR BIRORTA HAM YANGI LEAD BO'LMASA, 2-SLOTGA HAM FOLLOW-UP OLADI
+        if len(tasks_to_run) == 1 and tasks_to_run[0]['is_followup']:
             for idx, row in enumerate(rows):
-                if len(tasks_to_run) >= 2:
-                    break
-
                 p_idx = idx + 2
                 if p_idx in used_lead_indices:
                     continue
 
                 email_val = row[0].strip() if len(row) > 0 else ''
-                email_lower = email_val.lower()
                 status_val = row[2].strip().upper() if len(row) > 2 else ''
-                
-                if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
-                    GLOBAL_SENT_CACHE.add(email_lower)
-                    used_lead_indices.add(p_idx)
-                    sheet.update_cell(p_idx, 3, "SENDING...")
-                    
-                    tasks_to_run.append({
-                        'pending_idx': p_idx,
-                        'pending_lead': {
-                            'Email': email_val,
-                            'Name': row[1].strip() if len(row) > 1 else '',
-                            'Company': row[17].strip() if len(row) > 17 else ''
-                        },
-                        'is_followup': False,
-                        'next_stage': 0
-                    })
+                reply_val = row[3].strip().upper() if len(row) > 3 else ''
+                fu_stage_str = row[15].strip() if len(row) > 15 else '0'  
+                last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') 
+                fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
+
+                if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 3 and last_fu_time_str:
+                    try:
+                        last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
+                        days_diff = (now_uzb - last_time).total_seconds() / 86400
+
+                        is_fu = False
+                        next_s = 0
+                        if fu_stage == 0 and days_diff >= 2: next_s = 1; is_fu = True
+                        elif fu_stage == 1 and days_diff >= 3: next_s = 2; is_fu = True
+                        elif fu_stage == 2 and days_diff >= 2: next_s = 3; is_fu = True
+
+                        if is_fu:
+                            used_lead_indices.add(p_idx)
+                            tasks_to_run.append({
+                                'pending_idx': p_idx,
+                                'pending_lead': {
+                                    'Email': email_val,
+                                    'Name': row[1].strip() if len(row) > 1 else '',
+                                    'Company': row[17].strip() if len(row) > 17 else '',
+                                    'SenderEmail': row[4].strip() if len(row) > 4 else ''
+                                },
+                                'is_followup': True,
+                                'next_stage': next_s
+                            })
+                            break
+                    except Exception:
+                        pass
 
         if not tasks_to_run:
             print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...", flush=True)
@@ -527,7 +561,6 @@ def main():
             except Exception as e:
                 print(f"⚠️ F ustuniga limitlarni yozishda xatolik: {e}", flush=True)
 
-        # TASKLARGA AKKAUNTLARNI TAYINLASH (Ikkala task bir xil pochtadan ketib qolmasligi uchun)
         used_acc_emails = set()
         final_executable_tasks = []
 
@@ -571,7 +604,7 @@ def main():
             time.sleep(600)
             continue
 
-        # --- PARALLEL YUBORISH (THREADPOOL) ---
+        # --- PARALLEL YUBORISH ---
         print(f"⚡ {len(final_executable_tasks)} ta xat PARALLEL ravishda yuborilmoqda...", flush=True)
         results = []
         with ThreadPoolExecutor(max_workers=len(final_executable_tasks)) as executor:
@@ -582,7 +615,6 @@ def main():
                 except Exception as ex:
                     print(f"⚠️ Thread xatoligi: {ex}", flush=True)
 
-        # --- SHEET-NI BATCH UPDATE QILISH (YUBORILGANLARI UCHUN) ---
         sheet_updates = []
         for res in results:
             p_idx = res['pending_idx']
