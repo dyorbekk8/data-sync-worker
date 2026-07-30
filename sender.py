@@ -18,59 +18,7 @@ else:
     # Local test yoki standart zaxira ro'yxat
     ACCOUNTS = [
         # ==========================================
-        # 1. GMAIL AKKAUNTLAR (6 ta)
-        # ==========================================
-        {
-            "type": "gmail",
-            "email": "behruzrozmetov246@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-        {
-            "type": "gmail",
-            "email": "dildoramatkarimiva@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-        {
-            "type": "gmail",
-            "email": "g84687216@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-        {
-            "type": "gmail",
-            "email": "userliders0@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-        {
-            "type": "gmail",
-            "email": "xsxsdromer@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-        {
-            "type": "gmail",
-            "email": "pcofficee@gmail.com",
-            "password": "APP_PASSWORD",
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 465,
-            "imap_host": "imap.gmail.com"
-        },
-
-        # ==========================================
-        # 2. DOMEN EMAILLAR (19 ta)
+        # 1. DOMEN EMAILLAR (19 ta)
         # Server: premium357.web-hosting.com | Port: 465 (SSL)
         # ==========================================
         {
