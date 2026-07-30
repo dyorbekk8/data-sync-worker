@@ -14,7 +14,7 @@ Quick pitch: We build clean, high-converting websites and landing pages setup fo
 Interested in upgrading {company}’s site this week?
 
 Best,
-Diyor - http://diyor.site"""
+Diyor | Web Developer"""
     },
     # 2-Xat
     {
@@ -28,7 +28,7 @@ No upfront payments!
 Would you like to work with us?
 
 Best, Diyor
-http://diyor.site"""
+CEO | Web Developer"""
     }
 ]
 
@@ -46,7 +46,7 @@ Quick pitch: We build clean, high-converting websites and landing pages setup fo
 Interested in upgrading {company}’s site this week?
 
 Best,
-Diyor - http://diyor.site"""
+Diyor - CEO\DEV"""
     },
     # 2-Xat (Faqat Kompaniya nomi bor bo'lganda)
     {
