@@ -110,7 +110,7 @@ UZB_TZ = timezone(timedelta(hours=5))
 GLOBAL_SENT_CACHE = set()
 
 # O'z pochtalarimiz ro'yxati
-MY_SENDER_EMAILS = set(acc['email'].lower() for acc in ACCOUNTS)
+MY_SENDER_EMAILS = set(acc['email'].lower().strip() for acc in ACCOUNTS)
 
 def get_uzb_now():
     return datetime.now(UZB_TZ)
@@ -291,8 +291,7 @@ def calculate_daily_limit(acc, days_passed):
         base_limit = 35 + (days_passed * 5)
         return min(base_limit, 50)
     else:
-        base_limit = 40 + (days_passed * 5)
-        return min(base_limit, 100)
+        return 70
 
 def main():
     print(f"🚀 Uzluksiz yuborish tizimi ishga tushdi... (Jamlangan akkauntlar soni: {len(ACCOUNTS)})", flush=True)
@@ -432,7 +431,7 @@ def main():
         limit_updates = []
 
         for idx, row in enumerate(rows):
-            g_val = row[6].strip() if len(row) > 6 else '' 
+            g_val = row[6].strip().lower() if len(row) > 6 else '' 
             h_val = row[7].strip() if len(row) > 7 else '0' 
             i_val = row[8].strip() if len(row) > 8 else '0' 
 
@@ -441,7 +440,7 @@ def main():
                 if is_new_day:
                     sheet.update_cell(idx + 2, 9, 0)
 
-                acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower() == g_val.lower()), {'type': 'domain'})
+                acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower().strip() == g_val), {'type': 'domain'})
                 max_daily = 70 if acc_obj.get('type') == 'domain' else calculate_daily_limit(acc_obj, days_passed)
 
                 limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
@@ -462,14 +461,15 @@ def main():
         selected_acc = None
         if is_followup and pending_lead.get('SenderEmail'):
             for acc in ACCOUNTS:
-                if acc['email'].lower() == pending_lead['SenderEmail'].lower():
+                if acc['email'].lower().strip() == pending_lead['SenderEmail'].lower().strip():
                     selected_acc = acc
                     break
 
         if not selected_acc:
             available_accounts = []
             for acc in ACCOUNTS:
-                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0, 'max_daily': 70})
+                clean_acc_email = acc['email'].lower().strip()
+                stats = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
                 if stats['today_count'] < stats['max_daily']:
                     available_accounts.append((acc, stats['today_count']))
             
@@ -479,8 +479,9 @@ def main():
 
         if not selected_acc:
             for acc in ACCOUNTS:
-                st = sender_stats.get(acc['email'], {'today_count': 0, 'max_daily': 70})
-                print(f"🔎 DEBUG: {acc['email']} | TodaySent: {st['today_count']} | MaxLimit: {st['max_daily']}", flush=True)
+                clean_acc_email = acc['email'].lower().strip()
+                st = sender_stats.get(clean_acc_email, {'today_count': 0, 'max_daily': 70})
+                print(f"🔎 DEBUG: {clean_acc_email} | TodaySent: {st['today_count']} | MaxLimit: {st['max_daily']}", flush=True)
             print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan yoki G ustunida akkauntlar ko'rsatilmagan! 10 daqiqa kutilmoqda...", flush=True)
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "")
@@ -536,10 +537,11 @@ def main():
 
                 sheet.batch_update(row_updates)
 
-            if selected_acc['email'] in sender_stats:
-                r = sender_stats[selected_acc['email']]['row']
-                new_total = sender_stats[selected_acc['email']]['count'] + 1
-                new_today = sender_stats[selected_acc['email']]['today_count'] + 1
+            clean_sel_email = selected_acc['email'].lower().strip()
+            if clean_sel_email in sender_stats:
+                r = sender_stats[clean_sel_email]['row']
+                new_total = sender_stats[clean_sel_email]['count'] + 1
+                new_today = sender_stats[clean_sel_email]['today_count'] + 1
                 sheet.batch_update([
                     {'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]}
                 ])
