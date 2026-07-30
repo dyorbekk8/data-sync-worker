@@ -427,6 +427,7 @@ def main():
 
         sheet.update_cell(1, 9, "TodaySent") 
 
+        # --- SENDER STATS O'QISHNIB TUBDAN SODDALASHTIRISH ---
         sender_stats = {}
         limit_updates = []
 
@@ -435,7 +436,7 @@ def main():
             h_val = row[7].strip() if len(row) > 7 else '0' 
             i_val = row[8].strip() if len(row) > 8 else '0' 
 
-            if g_val:
+            if g_val and "@" in g_val: # Faqat haqiqiy email bo'lsa
                 today_cnt = 0 if is_new_day else (int(i_val) if i_val.isdigit() else 0)
                 if is_new_day:
                     sheet.update_cell(idx + 2, 9, 0)
@@ -465,27 +466,25 @@ def main():
                     selected_acc = acc
                     break
 
+        # --- AKKAUNT TANLASH MANTIG'INI TEMIRDEK SODDA VA ISHBOP QILISH ---
         if not selected_acc:
             available_accounts = []
             for acc in ACCOUNTS:
                 clean_acc_email = acc['email'].lower().strip()
-                # G ustunida topilmasa ham xavfsiz default qiymat beriladi (0 va 70)
-                stats = sender_stats.get(clean_acc_email)
-                if not stats:
-                    stats = {'count': 0, 'today_count': 0, 'max_daily': 70}
+                st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
                 
-                if stats['today_count'] < stats['max_daily']:
-                    available_accounts.append((acc, stats['today_count']))
+                # STRING BO'LSA INT GA O'TKAZISH XAVFSIZLIGI
+                t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
+                m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 70
+
+                if t_count < m_limit:
+                    available_accounts.append((acc, t_count))
             
             if available_accounts:
                 available_accounts.sort(key=lambda x: x[1])
                 selected_acc = available_accounts[0][0]
 
         if not selected_acc:
-            for acc in ACCOUNTS:
-                clean_acc_email = acc['email'].lower().strip()
-                st = sender_stats.get(clean_acc_email, {'today_count': 0, 'max_daily': 70})
-                print(f"🔎 DEBUG: {clean_acc_email} | TodaySent: {st['today_count']} | MaxLimit: {st['max_daily']}", flush=True)
             print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan yoki G ustunida akkauntlar ko'rsatilmagan! 10 daqiqa kutilmoqda...", flush=True)
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "")
