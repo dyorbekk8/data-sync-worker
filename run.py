@@ -292,7 +292,9 @@ def calculate_daily_limit(acc, days_passed):
         base_limit = 35 + (days_passed * 5)
         return min(base_limit, 50)
     else:
-        return 70
+        # Har 2 kunda limit 1 taga oshadi (70 dan boshlanib, 10 kunda 75 ga yetadi)
+        base_limit = 70 + (days_passed // 2)
+        return min(base_limit, 75)
 
 def process_single_lead(task_info):
     pending_lead = task_info['pending_lead']
@@ -544,7 +546,7 @@ def main():
                     sheet.update_cell(idx + 2, 9, 0)
 
                 acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower().strip() == g_val), {'type': 'domain'})
-                max_daily = 70 if acc_obj.get('type') == 'domain' else calculate_daily_limit(acc_obj, days_passed)
+                max_daily = calculate_daily_limit(acc_obj, days_passed)
 
                 limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
 
@@ -600,7 +602,7 @@ def main():
                     sheet.update_cell(task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
-            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (70 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan! 10 daqiqa kutilmoqda...", flush=True)
             time.sleep(600)
             continue
 
