@@ -108,15 +108,15 @@ Portfolio: http://diyor.site"""
 # FOLLOW-UP SHABLONLARI (1, 2 VA 3-BOSQICH)
 FOLLOWUP_TEMPLATES = {
     1: {
-        "subject": "Re: {original_subject}",
+        "subject": "Re: Quick question",
         "body": "I know your inbox is probably flooded, so I wanted to bring this to the top of your inbox."
     },
     2: {
-        "subject": "Re: {original_subject}",
+        "subject": "Re: Quick question",
         "body": "Reaching out to you is harder than reaching out to the president :)"
     },
     3: {
-        "subject": "Re: {original_subject}",
+        "subject": "Re: Quick question",
         "body": "Quick thought — we recently helped a client rebuild their web platform, which boosted their client conversions significantly."
     }
 }
