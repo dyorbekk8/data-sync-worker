@@ -469,7 +469,11 @@ def main():
             available_accounts = []
             for acc in ACCOUNTS:
                 clean_acc_email = acc['email'].lower().strip()
-                stats = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
+                # G ustunida topilmasa ham xavfsiz default qiymat beriladi (0 va 70)
+                stats = sender_stats.get(clean_acc_email)
+                if not stats:
+                    stats = {'count': 0, 'today_count': 0, 'max_daily': 70}
+                
                 if stats['today_count'] < stats['max_daily']:
                     available_accounts.append((acc, stats['today_count']))
             
