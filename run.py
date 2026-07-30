@@ -11,6 +11,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from concurrent.futures import ThreadPoolExecutor
 import gspread
 
 # --- RAILWAY / CLOUD SERVERLARDA IPv6 UNREACHABLE XATOSINI TUBDAN TUZATISH ---
@@ -293,8 +294,54 @@ def calculate_daily_limit(acc, days_passed):
     else:
         return 70
 
+def process_single_lead(task_info):
+    """
+    Parallel ravishda bitta leadga xat yuborish funksiyasi
+    """
+    pending_lead = task_info['pending_lead']
+    pending_idx = task_info['pending_idx']
+    is_followup = task_info['is_followup']
+    next_stage = task_info['next_stage']
+    selected_acc = task_info['selected_acc']
+    
+    lead_email = pending_lead['Email']
+    lead_name = pending_lead['Name']
+    lead_company = pending_lead['Company']
+
+    if is_followup:
+        fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
+        subject = fu_tmpl['subject']
+        body = fu_tmpl['body']
+        print(f"🔄 Follow-Up #{next_stage} yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
+    else:
+        if lead_name and lead_company:
+            all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
+            selected = random.choice(all_templates)
+            subject = selected['subject'].format(name=lead_name, company=lead_company)
+            body = selected['body'].format(name=lead_name, company=lead_company)
+        elif not lead_name and lead_company:
+            selected = random.choice(TEMPLATES_WITHOUT_NAME[:3])
+            subject = selected['subject'].format(company=lead_company)
+            body = selected['body'].format(company=lead_company)
+        else:
+            selected = random.choice(TEMPLATES_WITHOUT_NAME[3:])
+            subject = selected['subject']
+            body = selected['body']
+        print(f"📧 Birinchi Xat yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
+
+    is_sent = send_email_real(selected_acc, lead_email, subject, body)
+
+    return {
+        'is_sent': is_sent,
+        'pending_idx': pending_idx,
+        'is_followup': is_followup,
+        'next_stage': next_stage,
+        'selected_acc': selected_acc,
+        'lead_email': lead_email
+    }
+
 def main():
-    print(f"🚀 Uzluksiz yuborish tizimi ishga tushdi... (Jamlangan akkauntlar soni: {len(ACCOUNTS)})", flush=True)
+    print(f"🚀 Uzluksiz va Parallel yuborish tizimi ishga tushdi... (Jamlangan akkauntlar soni: {len(ACCOUNTS)})", flush=True)
 
     try:
         sheet.batch_update([
@@ -305,8 +352,13 @@ def main():
     except Exception as e:
         print(f"⚠️ Sarlavhalarni yangilashda ogohlantirish: {e}", flush=True)
 
+    cycle_count = 0
+
     while True:
-        check_replies()
+        cycle_count += 1
+        # IMAP sekinlashtirmasligi uchun har 5 ta siklda 1 marta tekshiramiz
+        if cycle_count % 5 == 1:
+            check_replies()
 
         time.sleep(1)
         all_values = sheet.get_all_values()
@@ -316,22 +368,23 @@ def main():
             continue
 
         rows = all_values[1:]
-
-        pending_idx = None
-        pending_lead = None
-        is_followup = False
-        next_stage = 0
-
         now_uzb = get_uzb_now()
 
-        # 1. BIRINCHI NAVBATDA FOLLOW-UP'LARNI TEKSHIRISH (AQLI VA ELASTIK MANTIQ)
+        # PARALLEL topshiriqlar ro'yxati (Max 2 ta)
+        tasks_to_run = []
+        used_lead_indices = set()
+
+        # 1. FOLLOW-UP LARDAN TEKSHIRISH VA TUSHIRISH
         for idx, row in enumerate(rows):
+            if len(tasks_to_run) >= 2:
+                break
+
             email_val = row[0].strip() if len(row) > 0 else ''
             status_val = row[2].strip().upper() if len(row) > 2 else ''
             reply_val = row[3].strip().upper() if len(row) > 3 else ''
             
-            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni (FollowupStage)
-            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q ustuni (LastFUSentTime) yoki K ustuni (Time sent)
+            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  
+            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') 
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
@@ -340,37 +393,38 @@ def main():
                     last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
                     days_diff = (now_uzb - last_time).total_seconds() / 86400
 
-                    # Stage 0 -> Stage 1: Asosiy xat yuborilganiga KAMIDA 2 KUN bo'lgan bo'lsa (2, 3, 4, 6, 10+ kun bo'lsa ham)
+                    is_fu = False
+                    next_s = 0
+
                     if fu_stage == 0 and days_diff >= 2:
-                        pending_idx = idx + 2
-                        next_stage = 1
-                        is_followup = True
-
-                    # Stage 1 -> Stage 2: 1-FollowUp yuborilganidan so'ng KAMIDA 3 KUN o'tgan bo'lsa
+                        next_s = 1
+                        is_fu = True
                     elif fu_stage == 1 and days_diff >= 3:
-                        pending_idx = idx + 2
-                        next_stage = 2
-                        is_followup = True
-
-                    # Stage 2 -> Stage 3: 2-FollowUp yuborilganidan so'ng KAMIDA 2 KUN o'tgan bo'lsa
+                        next_s = 2
+                        is_fu = True
                     elif fu_stage == 2 and days_diff >= 2:
-                        pending_idx = idx + 2
-                        next_stage = 3
-                        is_followup = True
+                        next_s = 3
+                        is_fu = True
 
-                    if is_followup:
-                        pending_lead = {
-                            'Email': email_val,
-                            'Name': row[1].strip() if len(row) > 1 else '',
-                            'Company': row[17].strip() if len(row) > 17 else '',
-                            'SenderEmail': row[4].strip() if len(row) > 4 else ''
-                        }
-                        break
+                    if is_fu:
+                        p_idx = idx + 2
+                        used_lead_indices.add(p_idx)
+                        tasks_to_run.append({
+                            'pending_idx': p_idx,
+                            'pending_lead': {
+                                'Email': email_val,
+                                'Name': row[1].strip() if len(row) > 1 else '',
+                                'Company': row[17].strip() if len(row) > 17 else '',
+                                'SenderEmail': row[4].strip() if len(row) > 4 else ''
+                            },
+                            'is_followup': True,
+                            'next_stage': next_s
+                        })
                 except Exception as ex:
                     print(f"⚠️ Sana parsing xatosi (Qator {idx+2}): {ex}", flush=True)
 
-        # 2. AGAR FOLLOW-UP YO'Q BO'LSA, YANGI LEAD QIDIRISH
-        if not pending_lead:
+        # 2. AGAR TASKLAR 2 TADA KAM BO'LSA, YANGI LEAD QO'SHISH (PARALLEL ISHLASH UCHUN)
+        if len(tasks_to_run) < 2:
             for row in rows:
                 e_val = row[0].strip().lower() if len(row) > 0 else ''
                 s_val = row[2].strip().upper() if len(row) > 2 else ''
@@ -378,29 +432,38 @@ def main():
                     GLOBAL_SENT_CACHE.add(e_val)
 
             for idx, row in enumerate(rows):
+                if len(tasks_to_run) >= 2:
+                    break
+
+                p_idx = idx + 2
+                if p_idx in used_lead_indices:
+                    continue
+
                 email_val = row[0].strip() if len(row) > 0 else ''
                 email_lower = email_val.lower()
                 status_val = row[2].strip().upper() if len(row) > 2 else ''
                 
                 if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
-                    pending_idx = idx + 2
-                    pending_lead = {
-                        'Email': email_val,
-                        'Name': row[1].strip() if len(row) > 1 else '',
-                        'Company': row[17].strip() if len(row) > 17 else ''
-                    }
-                    break
+                    GLOBAL_SENT_CACHE.add(email_lower)
+                    used_lead_indices.add(p_idx)
+                    sheet.update_cell(p_idx, 3, "SENDING...")
+                    
+                    tasks_to_run.append({
+                        'pending_idx': p_idx,
+                        'pending_lead': {
+                            'Email': email_val,
+                            'Name': row[1].strip() if len(row) > 1 else '',
+                            'Company': row[17].strip() if len(row) > 17 else ''
+                        },
+                        'is_followup': False,
+                        'next_stage': 0
+                    })
 
-        if not pending_lead:
+        if not tasks_to_run:
             print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...", flush=True)
             update_sent_total_and_replies_summary(sheet.get_all_values())
             time.sleep(180)
             continue
-
-        lead_email_clean = pending_lead['Email'].lower()
-        if not is_followup:
-            GLOBAL_SENT_CACHE.add(lead_email_clean)
-            sheet.update_cell(pending_idx, 3, "SENDING...")
 
         today_uzb = get_uzb_now()
         today_str = today_uzb.strftime("%Y-%m-%d")
@@ -432,7 +495,7 @@ def main():
 
         sheet.update_cell(1, 9, "TodaySent") 
 
-        # --- SENDER STATS O'QISH: SHEET'DAGI POCHTALARNI XAVFSIZ RO'YXATGA OLISH ---
+        # --- SENDER STATS O'QISH ---
         sender_stats = {}
         limit_updates = []
 
@@ -464,104 +527,111 @@ def main():
             except Exception as e:
                 print(f"⚠️ F ustuniga limitlarni yozishda xatolik: {e}", flush=True)
 
-        selected_acc = None
-        if is_followup and pending_lead.get('SenderEmail'):
-            for acc in ACCOUNTS:
-                if acc['email'].lower().strip() == pending_lead['SenderEmail'].lower().strip():
-                    selected_acc = acc
-                    break
+        # TASKLARGA AKKAUNTLARNI TAYINLASH (Ikkala task bir xil pochtadan ketib qolmasligi uchun)
+        used_acc_emails = set()
+        final_executable_tasks = []
 
-        # --- AKKAUNT TANLASH: 19 TA DOMEN MUNTAMAZ SIKL (ROUND-ROBIN) BO'YICHA AYLANADI ---
-        if not selected_acc:
-            available_accounts = []
-            for acc in ACCOUNTS:
-                clean_acc_email = acc['email'].lower().strip()
-                st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
+        for task in tasks_to_run:
+            selected_acc = None
+            if task['is_followup'] and task['pending_lead'].get('SenderEmail'):
+                s_email = task['pending_lead']['SenderEmail'].lower().strip()
+                for acc in ACCOUNTS:
+                    if acc['email'].lower().strip() == s_email:
+                        selected_acc = acc
+                        break
+
+            if not selected_acc:
+                available_accounts = []
+                for acc in ACCOUNTS:
+                    clean_acc_email = acc['email'].lower().strip()
+                    if clean_acc_email in used_acc_emails:
+                        continue
+
+                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
+                    t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
+                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 70
+
+                    if t_count < m_limit:
+                        available_accounts.append((acc, t_count))
                 
-                t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 70
+                if available_accounts:
+                    available_accounts.sort(key=lambda x: x[1])
+                    selected_acc = available_accounts[0][0]
 
-                if t_count < m_limit:
-                    available_accounts.append((acc, t_count))
-            
-            if available_accounts:
-                available_accounts.sort(key=lambda x: x[1])
-                selected_acc = available_accounts[0][0]
+            if selected_acc:
+                used_acc_emails.add(selected_acc['email'].lower().strip())
+                task['selected_acc'] = selected_acc
+                final_executable_tasks.append(task)
+            else:
+                if not task['is_followup']:
+                    sheet.update_cell(task['pending_idx'], 3, "")
 
-        if not selected_acc:
+        if not final_executable_tasks:
             print("🛑 SABAB: Barcha akkauntlar bugungi limitga (70 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
-            if not is_followup:
-                sheet.update_cell(pending_idx, 3, "")
             time.sleep(600)
             continue
 
-        lead_email = pending_lead['Email']
-        lead_name = pending_lead['Name']
-        lead_company = pending_lead['Company']
+        # --- PARALLEL YUBORISH (THREADPOOL) ---
+        print(f"⚡ {len(final_executable_tasks)} ta xat PARALLEL ravishda yuborilmoqda...", flush=True)
+        results = []
+        with ThreadPoolExecutor(max_workers=len(final_executable_tasks)) as executor:
+            futures = [executor.submit(process_single_lead, task) for task in final_executable_tasks]
+            for future in futures:
+                try:
+                    results.append(future.result())
+                except Exception as ex:
+                    print(f"⚠️ Thread xatoligi: {ex}", flush=True)
 
-        if is_followup:
-            fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
-            subject = fu_tmpl['subject']
-            body = fu_tmpl['body']
-            print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
-        else:
-            if lead_name and lead_company:
-                all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
-                selected = random.choice(all_templates)
-                subject = selected['subject'].format(name=lead_name, company=lead_company)
-                body = selected['body'].format(name=lead_name, company=lead_company)
-            elif not lead_name and lead_company:
-                selected = random.choice(TEMPLATES_WITHOUT_NAME[:3])
-                subject = selected['subject'].format(company=lead_company)
-                body = selected['body'].format(company=lead_company)
+        # --- SHEET-NI BATCH UPDATE QILISH (YUBORILGANLARI UCHUN) ---
+        sheet_updates = []
+        for res in results:
+            p_idx = res['pending_idx']
+            is_sent = res['is_sent']
+            is_fu = res['is_followup']
+            n_stage = res['next_stage']
+            sel_acc = res['selected_acc']
+            lead_e = res['lead_email']
+
+            if is_sent:
+                uzb_time_str = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
+                if is_fu:
+                    sheet_updates.extend([
+                        {'range': f'P{p_idx}', 'values': [[n_stage]]},
+                        {'range': f'Q{p_idx}', 'values': [[uzb_time_str]]}
+                    ])
+                else:
+                    sheet_updates.extend([
+                        {'range': f'C{p_idx}', 'values': [['YES']]},                     
+                        {'range': f'E{p_idx}', 'values': [[sel_acc['email']]]},     
+                        {'range': 'K1', 'values': [['Time sent']]},                            
+                        {'range': f'K{p_idx}', 'values': [[uzb_time_str]]},
+                        {'range': f'P{p_idx}', 'values': [[0]]},
+                        {'range': f'Q{p_idx}', 'values': [[uzb_time_str]]},
+                        {'range': f'D{p_idx}', 'values': [['NO']]}
+                    ])
+
+                clean_sel_email = sel_acc['email'].lower().strip()
+                if clean_sel_email in sender_stats:
+                    r = sender_stats[clean_sel_email]['row']
+                    new_total = sender_stats[clean_sel_email]['count'] + 1
+                    new_today = sender_stats[clean_sel_email]['today_count'] + 1
+                    sender_stats[clean_sel_email]['today_count'] = new_today
+                    sender_stats[clean_sel_email]['count'] = new_total
+                    sheet_updates.append({'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]})
             else:
-                selected = random.choice(TEMPLATES_WITHOUT_NAME[3:])
-                subject = selected['subject']
-                body = selected['body']
-            print(f"📧 Birinchi Xat yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
+                print(f"❌ XAT YUBORILMADI: {sel_acc['email']} -> {lead_e}", flush=True)
+                if not is_fu:
+                    sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
 
-        is_sent = send_email_real(selected_acc, lead_email, subject, body)
+        if sheet_updates:
+            try:
+                sheet.batch_update(sheet_updates)
+                update_sent_total_and_replies_summary(sheet.get_all_values())
+            except Exception as e:
+                print(f"⚠️ Batch update xatoligi: {e}", flush=True)
 
-        if is_sent:
-            uzb_time_str = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            if is_followup:
-                sheet.batch_update([
-                    {'range': f'P{pending_idx}', 'values': [[next_stage]]},
-                    {'range': f'Q{pending_idx}', 'values': [[uzb_time_str]]}
-                ])
-            else:
-                row_updates = [
-                    {'range': f'C{pending_idx}', 'values': [['YES']]},                     
-                    {'range': f'E{pending_idx}', 'values': [[selected_acc['email']]]},     
-                    {'range': 'K1', 'values': [['Time sent']]},                            
-                    {'range': f'K{pending_idx}', 'values': [[uzb_time_str]]},
-                    {'range': f'P{pending_idx}', 'values': [[0]]},
-                    {'range': f'Q{pending_idx}', 'values': [[uzb_time_str]]}
-                ]
-                if len(row) <= 3 or not row[3].strip():
-                    row_updates.append({'range': f'D{pending_idx}', 'values': [['NO']]})    
-
-                sheet.batch_update(row_updates)
-
-            clean_sel_email = selected_acc['email'].lower().strip()
-            if clean_sel_email in sender_stats:
-                r = sender_stats[clean_sel_email]['row']
-                new_total = sender_stats[clean_sel_email]['count'] + 1
-                new_today = sender_stats[clean_sel_email]['today_count'] + 1
-                sheet.batch_update([
-                    {'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]}
-                ])
-
-            curr_vals = sheet.get_all_values()
-            update_sent_total_and_replies_summary(curr_vals)
-        else:
-            print(f"❌ XAT YUBORILMADI (Status FAILED deb belgilandi): {selected_acc['email']} -> {lead_email}", flush=True)
-            if not is_followup:
-                sheet.update_cell(pending_idx, 3, "FAILED")
-
-        delay = random.randint(9, 20)
-        print(f"⏳ {delay} sekund kutilmoqda...\n", flush=True)
+        delay = random.randint(20, 35)
+        print(f"⏳ Sikl yakunlandi. {delay} sekund kutilmoqda...\n", flush=True)
         time.sleep(delay)
 
 if __name__ == "__main__":
