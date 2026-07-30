@@ -442,7 +442,7 @@ def main():
                     sheet.update_cell(idx + 2, 9, 0)
 
                 acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower() == g_val.lower()), {'type': 'domain'})
-                max_daily = calculate_daily_limit(acc_obj, days_passed)
+                max_daily = 70 if acc_obj.get('type') == 'domain' else calculate_daily_limit(acc_obj, days_passed)
 
                 limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
 
@@ -469,7 +469,7 @@ def main():
         if not selected_acc:
             available_accounts = []
             for acc in ACCOUNTS:
-                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0, 'max_daily': calculate_daily_limit(acc, days_passed)})
+                stats = sender_stats.get(acc['email'], {'count': 0, 'today_count': 0, 'max_daily': 70})
                 if stats['today_count'] < stats['max_daily']:
                     available_accounts.append((acc, stats['today_count']))
             
@@ -478,6 +478,9 @@ def main():
                 selected_acc = available_accounts[0][0]
 
         if not selected_acc:
+            for acc in ACCOUNTS:
+                st = sender_stats.get(acc['email'], {'today_count': 0, 'max_daily': 70})
+                print(f"🔎 DEBUG: {acc['email']} | TodaySent: {st['today_count']} | MaxLimit: {st['max_daily']}", flush=True)
             print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan yoki G ustunida akkauntlar ko'rsatilmagan! 10 daqiqa kutilmoqda...", flush=True)
             if not is_followup:
                 sheet.update_cell(pending_idx, 3, "")
