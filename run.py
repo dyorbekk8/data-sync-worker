@@ -324,14 +324,14 @@ def main():
 
         now_uzb = get_uzb_now()
 
-        # 1. BIRINCHI NAVBATDA FOLLOW-UP'LARNI TEKSHIRISH
+        # 1. BIRINCHI NAVBATDA FOLLOW-UP'LARNI TEKSHIRISH (AQLI VA ELASTIK MANTIQ)
         for idx, row in enumerate(rows):
             email_val = row[0].strip() if len(row) > 0 else ''
             status_val = row[2].strip().upper() if len(row) > 2 else ''
             reply_val = row[3].strip().upper() if len(row) > 3 else ''
             
-            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni
-            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q yoki K ustuni
+            fu_stage_str = row[15].strip() if len(row) > 15 else '0'  # P ustuni (FollowupStage)
+            last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') # Q ustuni (LastFUSentTime) yoki K ustuni (Time sent)
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
@@ -340,14 +340,19 @@ def main():
                     last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
                     days_diff = (now_uzb - last_time).total_seconds() / 86400
 
+                    # Stage 0 -> Stage 1: Asosiy xat yuborilganiga KAMIDA 2 KUN bo'lgan bo'lsa (2, 3, 4, 6, 10+ kun bo'lsa ham)
                     if fu_stage == 0 and days_diff >= 2:
                         pending_idx = idx + 2
                         next_stage = 1
                         is_followup = True
+
+                    # Stage 1 -> Stage 2: 1-FollowUp yuborilganidan so'ng KAMIDA 3 KUN o'tgan bo'lsa
                     elif fu_stage == 1 and days_diff >= 3:
                         pending_idx = idx + 2
                         next_stage = 2
                         is_followup = True
+
+                    # Stage 2 -> Stage 3: 2-FollowUp yuborilganidan so'ng KAMIDA 2 KUN o'tgan bo'lsa
                     elif fu_stage == 2 and days_diff >= 2:
                         pending_idx = idx + 2
                         next_stage = 3
@@ -427,7 +432,7 @@ def main():
 
         sheet.update_cell(1, 9, "TodaySent") 
 
-        # --- SENDER STATS O'QISH: SHEET'DAGI POKTALARNI XAVFSIZ RO'YXATGA OLISH ---
+        # --- SENDER STATS O'QISH: SHEET'DAGI POCHTALARNI XAVFSIZ RO'YXATGA OLISH ---
         sender_stats = {}
         limit_updates = []
 
@@ -480,7 +485,6 @@ def main():
                     available_accounts.append((acc, t_count))
             
             if available_accounts:
-                # Eng kam yuborgan pochtadan boshlab tartiblaydi (1 dan 19 gacha aylanadi)
                 available_accounts.sort(key=lambda x: x[1])
                 selected_acc = available_accounts[0][0]
 
@@ -497,7 +501,7 @@ def main():
 
         if is_followup:
             fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
-            subject = fu_tmpl['subject'].format(original_subject="Quick question")
+            subject = fu_tmpl['subject']
             body = fu_tmpl['body']
             print(f"🔄 Follow-Up #{next_stage} yuborilmoqda: {selected_acc['email']} -> {lead_email}", flush=True)
         else:
