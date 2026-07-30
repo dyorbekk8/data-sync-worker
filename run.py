@@ -288,13 +288,8 @@ def check_replies():
         print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    if acc.get('type') == 'gmail':
-        base_limit = 35 + (days_passed * 5)
-        return min(base_limit, 50)
-    else:
-        # Har 2 kunda limit 1 taga oshadi (70 dan boshlanib, 10 kunda 75 ga yetadi)
-        base_limit = 70 + (days_passed // 2)
-        return min(base_limit, 75)
+    # KUNLIK KETARLI LIMIT QAT'IY 50 TA
+    return 50
 
 def process_single_lead(task_info):
     pending_lead = task_info['pending_lead']
@@ -582,9 +577,9 @@ def main():
                     if clean_acc_email in used_acc_emails:
                         continue
 
-                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 70})
+                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 50})
                     t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 70
+                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 50
 
                     if t_count < m_limit:
                         available_accounts.append((acc, t_count))
@@ -602,7 +597,7 @@ def main():
                     sheet.update_cell(task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
-            print("🛑 SABAB: Barcha akkauntlar bugungi limitga yetgan! 10 daqiqa kutilmoqda...", flush=True)
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (50 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
             time.sleep(600)
             continue
 
@@ -664,7 +659,8 @@ def main():
             except Exception as e:
                 print(f"⚠️ Batch update xatoligi: {e}", flush=True)
 
-        delay = random.randint(20, 35)
+        # PAUZA: 60 - 80 SONIYA (DEYARLI 1 - 1.3 DAQIQA)
+        delay = random.randint(60, 80)
         print(f"⏳ Sikl yakunlandi. {delay} sekund kutilmoqda...\n", flush=True)
         time.sleep(delay)
 
