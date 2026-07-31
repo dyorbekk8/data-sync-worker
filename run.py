@@ -288,8 +288,8 @@ def check_replies():
         print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    # KUNLIK KETARLI LIMIT QAT'IY 50 TA
-    return 50
+    # KUNLIK KETARLI LIMIT QAT'IY 30 TA
+    return 30
 
 def process_single_lead(task_info):
     pending_lead = task_info['pending_lead']
@@ -577,9 +577,9 @@ def main():
                     if clean_acc_email in used_acc_emails:
                         continue
 
-                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 50})
+                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 30})
                     t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 50
+                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 30
 
                     if t_count < m_limit:
                         available_accounts.append((acc, t_count))
@@ -597,7 +597,7 @@ def main():
                     sheet.update_cell(task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
-            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (50 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (30 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
             time.sleep(600)
             continue
 
