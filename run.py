@@ -163,6 +163,7 @@ def send_email_real(acc, to_email, subject, body):
         return False
     except socket.timeout as e:
         print(f"❌ SMTP TIMEOUT ERROR ({acc['email']}): Server javob berish vaqti tugadi (20s). Detal: {e}", flush=True)
+        return False
     except Exception as e:
         print(f"❌ UMUMIY SMTP XATOLIK ({acc['email']} -> {to_email}): {e}", flush=True)
         traceback.print_exc()
@@ -649,8 +650,8 @@ def main():
                     sheet_updates.append({'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]})
             else:
                 print(f"❌ XAT YUBORILMADI: {sel_acc['email']} -> {lead_e}", flush=True)
-                if not is_fu:
-                    sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
+                # O'ZGARISH MANA SHU YERDA: is_fu (follow-up) bo'lsa ham FAILED qo'yamiz.
+                sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
 
         if sheet_updates:
             try:
