@@ -122,7 +122,7 @@ def save_to_sent_folder(acc, msg):
     try:
         mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
         mail.login(acc['email'], acc['password'])
-        mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+        mail.append('Sent', '\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
     except Exception as e:
         print(f"⚠️ Sent papkasiga saqlashda IMAP xatolik ({acc['email']}): {e}", flush=True)
@@ -660,8 +660,8 @@ def main():
             except Exception as e:
                 print(f"⚠️ Batch update xatoligi: {e}", flush=True)
 
-        # PAUZA: 60 - 80 SONIYA (DEYARLI 1 - 1.3 DAQIQA)
-        delay = random.randint(60, 80)
+        # PAUZA: 120 - 160 SONIYA (DEYARLI 2 - 2.6 DAQIQA) -- 2 BARAOBAR OSHIRILDI
+        delay = random.randint(120, 160)
         print(f"⏳ Sikl yakunlandi. {delay} sekund kutilmoqda...\n", flush=True)
         time.sleep(delay)
 
