@@ -122,7 +122,7 @@ def save_to_sent_folder(acc, msg):
     try:
         mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
         mail.login(acc['email'], acc['password'])
-        mail.append('Sent', '\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+        mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
     except Exception as e:
         print(f"⚠️ Sent papkasiga saqlashda IMAP xatolik ({acc['email']}): {e}", flush=True)
@@ -177,6 +177,7 @@ def update_sent_total_and_replies_summary(all_values):
         rows = all_values[1:]
         sent_yes_count = 0
         my_replied_senders = []
+        reply_times = []
 
         for row in rows:
             status_val = row[2].strip().upper() if len(row) > 2 else ''
@@ -185,24 +186,33 @@ def update_sent_total_and_replies_summary(all_values):
 
             replied_status = row[3].strip().upper() if len(row) > 3 else ''
             replied_to_my_email = row[5].strip() if len(row) > 5 else ''
+            reply_time_val = row[14].strip() if len(row) > 14 else ''
 
             if replied_status == 'YES!' and replied_to_my_email:
                 my_replied_senders.append(replied_to_my_email)
+                reply_times.append(reply_time_val)
 
         updates = [
             {'range': 'J1', 'values': [['Sent total']]},
             {'range': 'J2', 'values': [[sent_yes_count]]},
             {'range': 'N1', 'values': [['All replies']]},
             {'range': 'N2', 'values': [[len(my_replied_senders)]]},
-            {'range': 'N3:N200', 'values': [[""]] * 198} 
+            {'range': 'O1', 'values': [['Reply Time']]},
+            {'range': 'N3:N200', 'values': [[""]] * 198},
+            {'range': 'O3:O200', 'values': [[""]] * 198}
         ]
 
         if my_replied_senders:
             sender_cells = [[s] for s in my_replied_senders]
+            time_cells = [[t] for t in reply_times]
             end_row = 2 + len(my_replied_senders)
             updates.append({
                 'range': f'N3:N{end_row}',
                 'values': sender_cells
+            })
+            updates.append({
+                'range': f'O3:O{end_row}',
+                'values': time_cells
             })
 
         sheet.batch_update(updates)
@@ -268,10 +278,12 @@ def check_replies():
 
                                 if from_addr in lead_map:
                                     row_num = lead_map[from_addr]
+                                    uzb_reply_time = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
                                     batch_updates_for_replies.append({'range': f'D{row_num}', 'values': [['YES!']]})
                                     batch_updates_for_replies.append({'range': f'F{row_num}', 'values': [[acc['email']]]})
+                                    batch_updates_for_replies.append({'range': f'O{row_num}', 'values': [[uzb_reply_time]]})
                                     
-                                    print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']}", flush=True)
+                                    print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']} | Vaqt: {uzb_reply_time}", flush=True)
                                     del lead_map[from_addr] 
 
                 mail.logout()
@@ -341,6 +353,7 @@ def main():
     try:
         sheet.batch_update([
             {'range': 'F1', 'values': [['MaxLimit']]},
+            {'range': 'O1', 'values': [['Reply Time']]},
             {'range': 'P1', 'values': [['FollowupStage']]},
             {'range': 'Q1', 'values': [['LastFUSentTime']]}
         ])
