@@ -9,9 +9,9 @@ TEMPLATE_WITH_NAME = [
 
 Love what you’re building at {company}.
 
-Quick pitch: We build clean, high-converting websites and landing pages setup for $500–$600. Fast turnaround, no AI-slop, and we strictly take Crypto.
+Quick pitch: We build clean, high-converting websites and landing pages. Plus, we provide daily qualified leads to fuel your sales. Fast turnaround, no AI-slop, and we accept Crypto.
 
-Interested in upgrading {company}’s site this week?
+Interested in upgrading {company}’s web presence this week?
 
 Best,
 Diyor | Web Developer"""
@@ -21,7 +21,7 @@ Diyor | Web Developer"""
         "subject": "I don't waste your time!",
         "body": """{name}, we're not reaching out to promote some "average" stuff!
 
-I built an entire website for {company}. Modern looking, zero distraction and minimalistic style. Helps to dominate your competitors in your niche.
+We build modern-looking, zero-distraction, minimalistic websites that help you dominate competitors in your niche. Along with the website, we also bring you qualified leads.
 
 No upfront payments!
 
@@ -41,9 +41,9 @@ TEMPLATES_WITHOUT_NAME = [
 
 Love what you’re building at {company}.
 
-Quick pitch: We build clean, high-converting websites and landing pages setup for $500–$600. Fast turnaround, no AI-slop, and we strictly take Crypto.
+Quick pitch: We build clean, high-converting websites and landing pages. Plus, we provide daily qualified leads to fuel your sales. Fast turnaround and we accept Crypto.
 
-Interested in upgrading {company}’s site this week?
+Interested in upgrading {company}’s web presence this week?
 
 Best,
 Diyor - CEO\DEV"""
@@ -53,26 +53,24 @@ Diyor - CEO\DEV"""
         "subject": "Quick question about {company}",
         "body": """I know you're busy so I need 20 seconds only.
 
-We build modern, minimalistic and high-converting websites for heroes like you!
+We build modern, minimalistic, high-converting websites and deliver daily qualified leads for businesses like yours!
 
-Actually, I've already built one for you, would you like to take a look?
+Would you be open to a quick web and lead system upgrade for {company}?
 
-Best, Diyor DEV
-http://diyor.site"""
+Best, Diyor DEV"""
     },
     # 3-Xat (Faqat Kompaniya nomi bor bo'lganda)
     {
         "subject": "I don't waste your time!",
         "body": """We're not reaching out to promote some "average" stuff!
 
-I built an entire website for {company}. Modern looking, zero distraction and minimalistic style. Helps to dominate your competitors in your niche.
+We build modern, zero-distraction websites for brands like {company} and supply them with fresh qualified leads.
 
 No upfront payments!
 
 Would you like to work with us?
 
-Best, Diyor
-http://diyor.site"""
+Best, Diyor"""
     },
     # 4-Xat (Umuman ISMI ham, KOMPANIYA NOMI ham bo'lmaganda)
     {
@@ -81,27 +79,24 @@ http://diyor.site"""
 
 I really admire the work you're doing — it’s clear you guys are experts in your field.
 
-The only thing missing is a digital home; without it, you're losing leads to competitors who are just easier to find online.
+We build modern websites and provide daily qualified leads to make sure you never run out of clients.
 
-So I built an entire website for you, want to see?
-No upfront payments required!
+No upfront payments required! Would you be open to chatting?
 
-Best, Diyor
-Portfolio: http://diyor.site"""
+Best, Diyor"""
     },
     # 5-Xat (Umuman ISMI ham, KOMPANIYA NOMI ham bo'lmaganda)
     {
-        "subject": "I built this for you!",
+        "subject": "Quick web development & lead offer",
         "body": """Hi,
 
 I'm a professional web developer and a big fan of the work you're doing!
 
-I built a complete website specifically for your business to help you capture more leads from your current traffic. Do you have a moment to take a look if I send it over?
+We specialize in building custom websites and delivering daily qualified leads to help you capture more clients consistently.
 
-100% Guarantee and quality work.
+100% Guarantee and quality work. Would you be open to getting more clients this week?
 
-Best, Diyor
-Portfolio: http://diyor.site"""
+Best, Diyor"""
     }
 ]
 
@@ -117,6 +112,6 @@ FOLLOWUP_TEMPLATES = {
     },
     3: {
         "subject": "Re: Quick question",
-        "body": "Quick thought — we recently helped a client rebuild their web platform, which boosted their client conversions significantly."
+        "body": "Quick thought — we recently helped a client rebuild their web platform and scale their incoming leads, boosting conversions significantly."
     }
 }
