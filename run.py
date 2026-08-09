@@ -315,10 +315,10 @@ def process_single_lead(task_info):
     lead_company = pending_lead['Company']
 
     if is_followup:
-        fu_tmpl = FOLLOWUP_TEMPLATES[next_stage]
+        fu_tmpl = FOLLOWUP_TEMPLATES[0]  # Faqat 1 ta follow-up shabloni
         subject = fu_tmpl['subject']
         body = fu_tmpl['body']
-        print(f"🔄 Follow-Up #{next_stage} yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
+        print(f"🔄 Follow-Up yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
     else:
         if lead_name and lead_company:
             all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
@@ -391,7 +391,8 @@ def main():
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
-            if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 3 and last_fu_time_str:
+            # 1 ta follow-up bo'lgani uchun fu_stage < 1 tekshiriladi
+            if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 1 and last_fu_time_str:
                 try:
                     last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
                     days_diff = (now_uzb - last_time).total_seconds() / 86400
@@ -401,10 +402,6 @@ def main():
 
                     if fu_stage == 0 and days_diff >= 2:
                         next_s = 1; is_fu = True
-                    elif fu_stage == 1 and days_diff >= 3:
-                        next_s = 2; is_fu = True
-                    elif fu_stage == 2 and days_diff >= 2:
-                        next_s = 3; is_fu = True
 
                     if is_fu:
                         p_idx = idx + 2
@@ -474,7 +471,7 @@ def main():
                 last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') 
                 fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
-                if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 3 and last_fu_time_str:
+                if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 1 and last_fu_time_str:
                     try:
                         last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
                         days_diff = (now_uzb - last_time).total_seconds() / 86400
@@ -482,8 +479,6 @@ def main():
                         is_fu = False
                         next_s = 0
                         if fu_stage == 0 and days_diff >= 2: next_s = 1; is_fu = True
-                        elif fu_stage == 1 and days_diff >= 3: next_s = 2; is_fu = True
-                        elif fu_stage == 2 and days_diff >= 2: next_s = 3; is_fu = True
 
                         if is_fu:
                             used_lead_indices.add(p_idx)
