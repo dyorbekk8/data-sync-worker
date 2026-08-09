@@ -301,7 +301,6 @@ def check_replies():
         print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    # KUNLIK KETARLI LIMIT QAT'IY 30 TA
     return 30
 
 def process_single_lead(task_info):
@@ -379,6 +378,7 @@ def main():
 
         tasks_to_run = []
         used_lead_indices = set()
+        sending_status_updates = []
 
         # 1. BIRINCHI SLOT: FAQAT 1 TA FOLLOW-UP OLADI
         for idx, row in enumerate(rows):
@@ -400,14 +400,11 @@ def main():
                     next_s = 0
 
                     if fu_stage == 0 and days_diff >= 2:
-                        next_s = 1
-                        is_fu = True
+                        next_s = 1; is_fu = True
                     elif fu_stage == 1 and days_diff >= 3:
-                        next_s = 2
-                        is_fu = True
+                        next_s = 2; is_fu = True
                     elif fu_stage == 2 and days_diff >= 2:
-                        next_s = 3
-                        is_fu = True
+                        next_s = 3; is_fu = True
 
                     if is_fu:
                         p_idx = idx + 2
@@ -423,11 +420,11 @@ def main():
                             'is_followup': True,
                             'next_stage': next_s
                         })
-                        break # FAQAT 1 TA FOLLOW-UP OLIB TO'XTAYDI
+                        break
                 except Exception as ex:
                     print(f"⚠️ Sana parsing xatosi (Qator {idx+2}): {ex}", flush=True)
 
-        # 2. IKKINCHI SLOT: FAQAT YANGI LEAD OLADI (AGAR MAX 2 TA BO'LMASA)
+        # 2. IKKINCHI SLOT: FAQAT YANGI LEAD OLADI
         for row in rows:
             e_val = row[0].strip().lower() if len(row) > 0 else ''
             s_val = row[2].strip().upper() if len(row) > 2 else ''
@@ -449,7 +446,8 @@ def main():
             if email_val and status_val not in ['YES', 'FAILED', 'SENDING...'] and email_lower not in GLOBAL_SENT_CACHE:
                 GLOBAL_SENT_CACHE.add(email_lower)
                 used_lead_indices.add(p_idx)
-                sheet.update_cell(p_idx, 3, "SENDING...")
+                
+                sending_status_updates.append({'range': f'C{p_idx}', 'values': [['SENDING...']]})
                 
                 tasks_to_run.append({
                     'pending_idx': p_idx,
@@ -509,6 +507,12 @@ def main():
             update_sent_total_and_replies_summary(sheet.get_all_values())
             time.sleep(180)
             continue
+
+        if sending_status_updates:
+            try:
+                sheet.batch_update(sending_status_updates)
+            except Exception as e:
+                print(f"⚠️ SENDING... statuslarini yangilashda xatolik: {e}", flush=True)
 
         today_uzb = get_uzb_now()
         today_str = today_uzb.strftime("%Y-%m-%d")
@@ -663,8 +667,8 @@ def main():
                     sheet_updates.append({'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]})
             else:
                 print(f"❌ XAT YUBORILMADI: {sel_acc['email']} -> {lead_e}", flush=True)
-                # O'ZGARISH MANA SHU YERDA: is_fu (follow-up) bo'lsa ham FAILED qo'yamiz.
-                sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
+                if not is_fu:
+                    sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
 
         if sheet_updates:
             try:
@@ -673,7 +677,6 @@ def main():
             except Exception as e:
                 print(f"⚠️ Batch update xatoligi: {e}", flush=True)
 
-        # PAUZA: 120 - 160 SONIYA (DEYARLI 2 - 2.6 DAQIQA) -- 2 BARAOBAR OSHIRILDI
         delay = random.randint(120, 160)
         print(f"⏳ Sikl yakunlandi. {delay} sekund kutilmoqda...\n", flush=True)
         time.sleep(delay)
