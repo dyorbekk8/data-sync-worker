@@ -44,7 +44,13 @@ socket.create_connection = create_connection_ipv4
 # --------------------------------------------------------------------------
 
 from sender import ACCOUNTS
-from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
+from templates import (
+    TEMPLATE_WITH_NAME, 
+    TEMPLATE_ONLY_NAME, 
+    TEMPLATE_ONLY_COMPANY, 
+    TEMPLATES_WITHOUT_NAME, 
+    FOLLOWUP_TEMPLATES
+)
 
 # --- GOOGLE SHEETS SETUP ---
 SCOPE = [
@@ -52,7 +58,6 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# --- CREDENTIALS YUKLASH ---
 CREDS_FILE = "creds.json"
 creds_dict = None
 
@@ -104,13 +109,8 @@ gc = gspread.authorize(creds)
 SHEET_NAME = os.environ.get("SHEET_NAME", "Cold Email Leads")
 sheet = gc.open(SHEET_NAME).sheet1
 
-# O'zbekiston vaqti (UTC+5)
 UZB_TZ = timezone(timedelta(hours=5))
-
-# GLOBAL XOTIRA
 GLOBAL_SENT_CACHE = set()
-
-# O'z pochtalarimiz ro'yxati
 MY_SENDER_EMAILS = set(acc['email'].lower().strip() for acc in ACCOUNTS)
 
 def get_uzb_now():
@@ -339,24 +339,29 @@ def process_single_lead(task_info):
     lead_company = pending_lead['Company']
 
     if is_followup:
-        fu_tmpl = FOLLOWUP_TEMPLATES[0]  # Faqat 1 ta follow-up shabloni
+        fu_tmpl = FOLLOWUP_TEMPLATES[0]
         subject = fu_tmpl['subject']
         body = fu_tmpl['body']
         print(f"🔄 Follow-Up yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
     else:
+        # Template tanlash mantiqini xavfsiz qilish
         if lead_name and lead_company:
-            all_templates = TEMPLATE_WITH_NAME + TEMPLATES_WITHOUT_NAME
-            selected = random.choice(all_templates)
+            selected = random.choice(TEMPLATE_WITH_NAME)
             subject = selected['subject'].format(name=lead_name, company=lead_company)
             body = selected['body'].format(name=lead_name, company=lead_company)
+        elif lead_name and not lead_company:
+            selected = random.choice(TEMPLATE_ONLY_NAME)
+            subject = selected['subject'].format(name=lead_name)
+            body = selected['body'].format(name=lead_name)
         elif not lead_name and lead_company:
-            selected = random.choice(TEMPLATES_WITHOUT_NAME[:3])
+            selected = random.choice(TEMPLATE_ONLY_COMPANY)
             subject = selected['subject'].format(company=lead_company)
             body = selected['body'].format(company=lead_company)
         else:
-            selected = random.choice(TEMPLATES_WITHOUT_NAME[3:])
+            selected = random.choice(TEMPLATES_WITHOUT_NAME)
             subject = selected['subject']
             body = selected['body']
+            
         print(f"📧 Birinchi Xat yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
 
     status_result = send_email_real(selected_acc, lead_email, subject, body)
@@ -429,12 +434,16 @@ def main():
                     if is_fu:
                         p_idx = idx + 2
                         used_lead_indices.add(p_idx)
+                        
+                        # Company ustuni B ustunida (row[1]) yoki boshqada ekanini xavfsiz tekshirish
+                        comp_val = row[17].strip() if len(row) > 17 else (row[1].strip() if len(row) > 1 else '')
+                        
                         tasks_to_run.append({
                             'pending_idx': p_idx,
                             'pending_lead': {
                                 'Email': email_val,
                                 'Name': row[1].strip() if len(row) > 1 else '',
-                                'Company': row[17].strip() if len(row) > 17 else '',
+                                'Company': comp_val,
                                 'SenderEmail': row[4].strip() if len(row) > 4 else ''
                             },
                             'is_followup': True,
@@ -469,12 +478,14 @@ def main():
                 
                 sending_status_updates.append({'range': f'C{p_idx}', 'values': [['SENDING...']]})
                 
+                comp_val = row[17].strip() if len(row) > 17 else (row[1].strip() if len(row) > 1 else '')
+                
                 tasks_to_run.append({
                     'pending_idx': p_idx,
                     'pending_lead': {
                         'Email': email_val,
                         'Name': row[1].strip() if len(row) > 1 else '',
-                        'Company': row[17].strip() if len(row) > 17 else ''
+                        'Company': comp_val
                     },
                     'is_followup': False,
                     'next_stage': 0
@@ -505,12 +516,13 @@ def main():
 
                         if is_fu:
                             used_lead_indices.add(p_idx)
+                            comp_val = row[17].strip() if len(row) > 17 else (row[1].strip() if len(row) > 1 else '')
                             tasks_to_run.append({
                                 'pending_idx': p_idx,
                                 'pending_lead': {
                                     'Email': email_val,
                                     'Name': row[1].strip() if len(row) > 1 else '',
-                                    'Company': row[17].strip() if len(row) > 17 else '',
+                                    'Company': comp_val,
                                     'SenderEmail': row[4].strip() if len(row) > 4 else ''
                                 },
                                 'is_followup': True,
