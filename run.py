@@ -491,47 +491,6 @@ def main():
                     'next_stage': 0
                 })
 
-        # 3. AGAR BIRORTA HAM YANGI LEAD BO'LMASA, 2-SLOTGA HAM FOLLOW-UP OLADI
-        if len(tasks_to_run) == 1 and tasks_to_run[0]['is_followup']:
-            for idx, row in enumerate(rows):
-                p_idx = idx + 2
-                if p_idx in used_lead_indices:
-                    continue
-
-                email_val = row[0].strip() if len(row) > 0 else ''
-                status_val = row[2].strip().upper() if len(row) > 2 else ''
-                reply_val = row[3].strip().upper() if len(row) > 3 else ''
-                fu_stage_str = row[15].strip() if len(row) > 15 else '0'  
-                last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') 
-                fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
-
-                if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 1 and last_fu_time_str:
-                    try:
-                        last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
-                        days_diff = (now_uzb - last_time).total_seconds() / 86400
-
-                        is_fu = False
-                        next_s = 0
-                        if fu_stage == 0 and days_diff >= 2: next_s = 1; is_fu = True
-
-                        if is_fu:
-                            used_lead_indices.add(p_idx)
-                            comp_val = row[17].strip() if len(row) > 17 else (row[1].strip() if len(row) > 1 else '')
-                            tasks_to_run.append({
-                                'pending_idx': p_idx,
-                                'pending_lead': {
-                                    'Email': email_val,
-                                    'Name': row[1].strip() if len(row) > 1 else '',
-                                    'Company': comp_val,
-                                    'SenderEmail': row[4].strip() if len(row) > 4 else ''
-                                },
-                                'is_followup': True,
-                                'next_stage': next_s
-                            })
-                            break
-                    except Exception:
-                        pass
-
         if not tasks_to_run:
             print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...", flush=True)
             update_sent_total_and_replies_summary(sheet.get_all_values())
