@@ -11,7 +11,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import gspread
 
 # --- RAILWAY / CLOUD SERVERLARDA IPv6 UNREACHABLE XATOSINI TUBDAN TUZATISH ---
@@ -120,7 +120,7 @@ def save_to_sent_folder(acc, msg):
     if acc.get('type') == 'gmail':
         return
     try:
-        mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
+        mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=10)
         mail.login(acc['email'], acc['password'])
         mail.append('Sent', '\\Seen', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
         mail.logout()
@@ -150,24 +150,26 @@ def send_email_real(acc, to_email, subject, body):
 
         if refused:
             print(f"❌ XAT RAD ETILDI (Refused Recipients): {refused}", flush=True)
-            return False
+            return "FAILED"
 
         save_to_sent_folder(acc, msg)
-        return True
+        return "SUCCESS"
 
+    except smtplib.SMTPRecipientsRefused as e:
+        print(f"❌ BOUNCE / MAVJUD EMAS ({to_email}): {e}", flush=True)
+        return "BOUNCED"
     except smtplib.SMTPAuthenticationError as e:
-        print(f"❌ SMTP AUTHENTICATION ERROR ({acc['email']}): Login yoki Parol noto'g'ri! Detal: {e}", flush=True)
-        return False
+        print(f"❌ SMTP AUTHENTICATION ERROR ({acc['email']}): {e}", flush=True)
+        return "FAILED"
     except smtplib.SMTPConnectError as e:
-        print(f"❌ SMTP CONNECT ERROR ({acc['email']}): Serverga ulanib bo'lmadi! Host: {smtp_host}:{smtp_port}. Detal: {e}", flush=True)
-        return False
+        print(f"❌ SMTP CONNECT ERROR ({acc['email']}): {e}", flush=True)
+        return "FAILED"
     except socket.timeout as e:
-        print(f"❌ SMTP TIMEOUT ERROR ({acc['email']}): Server javob berish vaqti tugadi (20s). Detal: {e}", flush=True)
-        return False
+        print(f"❌ SMTP TIMEOUT ERROR ({acc['email']}): {e}", flush=True)
+        return "FAILED"
     except Exception as e:
         print(f"❌ UMUMIY SMTP XATOLIK ({acc['email']} -> {to_email}): {e}", flush=True)
-        traceback.print_exc()
-        return False
+        return "FAILED"
 
 def update_sent_total_and_replies_summary(all_values):
     try:
@@ -221,6 +223,57 @@ def update_sent_total_and_replies_summary(all_values):
     except Exception as e:
         print(f"⚠️ Totals va Replies yangilashda xatolik: {e}", flush=True)
 
+def check_single_account_imap(acc, lead_map):
+    IGNORE_PATTERNS = [
+        'delivery status', 'undeliverable', 'automatic reply', 'auto-reply',
+        'out of office', 'postmaster', 'mailer-daemon', 'failure notice',
+        'noreply', 'no-reply', 'bounce', 'vacation', 'away'
+    ]
+    found_replies = []
+    
+    try:
+        imap_host = acc.get('imap_host')
+        if not imap_host:
+            return found_replies
+
+        mail = imaplib.IMAP4_SSL(imap_host, int(acc.get('imap_port', 993)), timeout=5)
+        mail.login(acc['email'], acc['password'])
+        mail.select('INBOX')
+
+        status, messages = mail.search(None, 'UNSEEN')
+
+        if status == 'OK' and messages[0]:
+            msg_nums = messages[0].split()
+            recent_nums = msg_nums[-15:]
+
+            for num in recent_nums:
+                res, msg_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        parsed = email.message_from_bytes(response_part[1])
+                        from_addr = email.utils.parseaddr(parsed.get('From', ''))[1].lower()
+                        subject_val = str(parsed.get('Subject', '')).lower()
+
+                        if any(ign in subject_val for ign in IGNORE_PATTERNS) or any(ign in from_addr for ign in IGNORE_PATTERNS):
+                            continue
+
+                        if from_addr in MY_SENDER_EMAILS:
+                            continue
+
+                        if from_addr in lead_map:
+                            found_replies.append({
+                                'lead_email': from_addr,
+                                'acc_email': acc['email']
+                            })
+
+        mail.logout()
+    except socket.timeout:
+        print(f"⚠️ IMAP Timeout ({acc['email']}): 5s ichida javob bermadi, o'tkazib yuborildi.", flush=True)
+    except Exception as e:
+        print(f"⚠️ IMAP Xatolik ({acc['email']}): {e}", flush=True)
+
+    return found_replies
+
 def check_replies():
     try:
         all_vals = sheet.get_all_values()
@@ -241,54 +294,25 @@ def check_replies():
             print("📭 Hozircha tekshirish uchun yangi yuborilgan xatlar yo'q.", flush=True)
             return
 
-        print("🔍 IMAP: Javoblar qidirilmoqda...", flush=True)
+        print("🔍 IMAP: Javoblar PARALLEL ravishda qidirilmoqda...", flush=True)
         batch_updates_for_replies = []
-        
-        IGNORE_PATTERNS = [
-            'delivery status', 'undeliverable', 'automatic reply', 'auto-reply',
-            'out of office', 'postmaster', 'mailer-daemon', 'failure notice',
-            'noreply', 'no-reply', 'bounce', 'vacation', 'away'
-        ]
 
-        for acc in ACCOUNTS:
-            try:
-                mail = imaplib.IMAP4_SSL(acc['imap_host'], timeout=30)
-                mail.login(acc['email'], acc['password'])
-                mail.select('INBOX')
-
-                status, messages = mail.search(None, 'ALL')
-
-                if status == 'OK' and messages[0]:
-                    msg_nums = messages[0].split()
-                    recent_nums = msg_nums[-20:]
-
-                    for num in recent_nums:
-                        res, msg_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
-                        for response_part in msg_data:
-                            if isinstance(response_part, tuple):
-                                parsed = email.message_from_bytes(response_part[1])
-                                from_addr = email.utils.parseaddr(parsed.get('From', ''))[1].lower()
-                                subject_val = str(parsed.get('Subject', '')).lower()
-
-                                if any(ign in subject_val for ign in IGNORE_PATTERNS) or any(ign in from_addr for ign in IGNORE_PATTERNS):
-                                    continue
-
-                                if from_addr in MY_SENDER_EMAILS:
-                                    continue
-
-                                if from_addr in lead_map:
-                                    row_num = lead_map[from_addr]
-                                    uzb_reply_time = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
-                                    batch_updates_for_replies.append({'range': f'D{row_num}', 'values': [['YES!']]})
-                                    batch_updates_for_replies.append({'range': f'F{row_num}', 'values': [[acc['email']]]})
-                                    batch_updates_for_replies.append({'range': f'O{row_num}', 'values': [[uzb_reply_time]]})
-                                    
-                                    print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']} | Vaqt: {uzb_reply_time}", flush=True)
-                                    del lead_map[from_addr]
-
-                mail.logout()
-            except Exception as e:
-                print(f"⚠️ IMAP Xatolik ({acc['email']}): {e}", flush=True)
+        with ThreadPoolExecutor(max_workers=len(ACCOUNTS)) as executor:
+            futures = [executor.submit(check_single_account_imap, acc, lead_map) for acc in ACCOUNTS]
+            for future in as_completed(futures):
+                replies = future.result()
+                for rep in replies:
+                    from_addr = rep['lead_email']
+                    acc_email = rep['acc_email']
+                    if from_addr in lead_map:
+                        row_num = lead_map[from_addr]
+                        uzb_reply_time = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
+                        batch_updates_for_replies.append({'range': f'D{row_num}', 'values': [['YES!']]})
+                        batch_updates_for_replies.append({'range': f'F{row_num}', 'values': [[acc_email]]})
+                        batch_updates_for_replies.append({'range': f'O{row_num}', 'values': [[uzb_reply_time]]})
+                        
+                        print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc_email} | Vaqt: {uzb_reply_time}", flush=True)
+                        del lead_map[from_addr]
 
         if batch_updates_for_replies:
             sheet.batch_update(batch_updates_for_replies)
@@ -335,10 +359,10 @@ def process_single_lead(task_info):
             body = selected['body']
         print(f"📧 Birinchi Xat yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
 
-    is_sent = send_email_real(selected_acc, lead_email, subject, body)
+    status_result = send_email_real(selected_acc, lead_email, subject, body)
 
     return {
-        'is_sent': is_sent,
+        'status_result': status_result,
         'pending_idx': pending_idx,
         'is_followup': is_followup,
         'next_stage': next_stage,
@@ -391,7 +415,6 @@ def main():
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
 
-            # 1 ta follow-up bo'lgani uchun fu_stage < 1 tekshiriladi
             if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 1 and last_fu_time_str:
                 try:
                     last_time = datetime.strptime(last_fu_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UZB_TZ)
@@ -628,13 +651,13 @@ def main():
         sheet_updates = []
         for res in results:
             p_idx = res['pending_idx']
-            is_sent = res['is_sent']
+            status_result = res['status_result']
             is_fu = res['is_followup']
             n_stage = res['next_stage']
             sel_acc = res['selected_acc']
             lead_e = res['lead_email']
 
-            if is_sent:
+            if status_result == "SUCCESS":
                 uzb_time_str = get_uzb_now().strftime("%Y-%m-%d %H:%M:%S")
                 if is_fu:
                     sheet_updates.extend([
@@ -661,9 +684,11 @@ def main():
                     sender_stats[clean_sel_email]['count'] = new_total
                     sheet_updates.append({'range': f'H{r}:I{r}', 'values': [[new_total, new_today]]})
             else:
-                print(f"❌ XAT YUBORILMADI: {sel_acc['email']} -> {lead_e}", flush=True)
-                if not is_fu:
-                    sheet_updates.append({'range': f'C{p_idx}', 'values': [['FAILED']]})
+                print(f"❌ XAT YUBORILMADI ({status_result}): {sel_acc['email']} -> {lead_e}", flush=True)
+                sheet_updates.extend([
+                    {'range': f'C{p_idx}', 'values': [['FAILED']]},
+                    {'range': f'P{p_idx}', 'values': [[99]]}
+                ])
 
         if sheet_updates:
             try:
