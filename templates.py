@@ -133,3 +133,5 @@ FOLLOWUP_TEMPLATES = [
         "body": "Reaching out to you is harder than reaching out to the president :)"
     }
 ]
+# templates.py fayli oxiriga qo'shish uchun:
+TEMPLATES_WITHOUT_NAME = TEMPLATE_ONLY_COMPANY + TEMPLATES_NO_VARS
