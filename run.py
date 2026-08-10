@@ -44,7 +44,18 @@ socket.create_connection = create_connection_ipv4
 # --------------------------------------------------------------------------
 
 from sender import ACCOUNTS
-from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
+
+# --- TEMPLATES IMPORT QISMI TO'G'RILANDI ---
+import templates
+
+TEMPLATE_WITH_NAME = getattr(templates, 'TEMPLATE_WITH_NAME', [])
+TEMPLATES_WITHOUT_NAME = getattr(
+    templates, 
+    'TEMPLATES_WITHOUT_NAME', 
+    getattr(templates, 'TEMPLATE_WITHOUT_NAME', [])
+)
+FOLLOWUP_TEMPLATES = getattr(templates, 'FOLLOWUP_TEMPLATES', [])
+# -------------------------------------------
 
 # --- GOOGLE SHEETS SETUP ---
 SCOPE = [
