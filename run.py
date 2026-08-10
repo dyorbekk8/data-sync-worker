@@ -44,18 +44,7 @@ socket.create_connection = create_connection_ipv4
 # --------------------------------------------------------------------------
 
 from sender import ACCOUNTS
-
-# --- TEMPLATES IMPORT QISMI TO'G'RILANDI ---
-import templates
-
-TEMPLATE_WITH_NAME = getattr(templates, 'TEMPLATE_WITH_NAME', [])
-TEMPLATES_WITHOUT_NAME = getattr(
-    templates, 
-    'TEMPLATES_WITHOUT_NAME', 
-    getattr(templates, 'TEMPLATE_WITHOUT_NAME', [])
-)
-FOLLOWUP_TEMPLATES = getattr(templates, 'FOLLOWUP_TEMPLATES', [])
-# -------------------------------------------
+from templates import TEMPLATE_WITH_NAME, TEMPLATES_WITHOUT_NAME, FOLLOWUP_TEMPLATES
 
 # --- GOOGLE SHEETS SETUP ---
 SCOPE = [
@@ -295,7 +284,7 @@ def check_replies():
                                     batch_updates_for_replies.append({'range': f'O{row_num}', 'values': [[uzb_reply_time]]})
                                     
                                     print(f"🎉 HAQIQIY JAVOB TOPILDI! Lead: {from_addr} | Qabul qildi: {acc['email']} | Vaqt: {uzb_reply_time}", flush=True)
-                                    del lead_map[from_addr] 
+                                    del lead_map[from_addr]
 
                 mail.logout()
             except Exception as e:
@@ -656,7 +645,7 @@ def main():
                     sheet_updates.extend([
                         {'range': f'C{p_idx}', 'values': [['YES']]},                     
                         {'range': f'E{p_idx}', 'values': [[sel_acc['email']]]},     
-                        {'range': 'K1', 'values': [['Time sent']]},                            
+                        {'range': 'K1', 'values': [['Time sent']]},                             
                         {'range': f'K{p_idx}', 'values': [[uzb_time_str]]},
                         {'range': f'P{p_idx}', 'values': [[0]]},
                         {'range': f'Q{p_idx}', 'values': [[uzb_time_str]]},
