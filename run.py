@@ -116,6 +116,21 @@ MY_SENDER_EMAILS = set(acc['email'].lower().strip() for acc in ACCOUNTS)
 def get_uzb_now():
     return datetime.now(UZB_TZ)
 
+def safe_update_cell(sh, row, col, val, retries=5):
+    """Google Sheets API vaqtinchalik 500/503/429 xato berganda scriptni o'chirmay qayta urinish funksiyasi."""
+    for attempt in range(retries):
+        try:
+            return sh.update_cell(row, col, val)
+        except Exception as e:
+            err_msg = str(e)
+            if any(code in err_msg for code in ["500", "502", "503", "504", "429"]):
+                wait_time = (attempt + 1) * 3
+                print(f"⚠️ Google Sheets API vaqtinchalik uzildi ({err_msg}). {wait_time}s kutilmoqda... (Urinish {attempt + 1}/{retries})", flush=True)
+                time.sleep(wait_time)
+            else:
+                raise e
+    return sh.update_cell(row, col, val)
+
 def save_to_sent_folder(acc, msg):
     if acc.get('type') == 'gmail':
         return
@@ -531,7 +546,7 @@ def main():
                 {'range': 'M2', 'values': [[today_str]]}
             ])
 
-        sheet.update_cell(1, 9, "TodaySent") 
+        safe_update_cell(sheet, 1, 9, "TodaySent") 
 
         # --- SENDER STATS O'QISH ---
         sender_stats = {}
@@ -545,7 +560,7 @@ def main():
             if g_val and "@" in g_val:
                 today_cnt = 0 if is_new_day else (int(i_val) if i_val.isdigit() else 0)
                 if is_new_day:
-                    sheet.update_cell(idx + 2, 9, 0)
+                    safe_update_cell(sheet, idx + 2, 9, 0)
 
                 acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower().strip() == g_val), {'type': 'domain'})
                 max_daily = calculate_daily_limit(acc_obj, days_passed)
@@ -601,7 +616,7 @@ def main():
                 final_executable_tasks.append(task)
             else:
                 if not task['is_followup']:
-                    sheet.update_cell(task['pending_idx'], 3, "")
+                    safe_update_cell(sheet, task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
             print("🛑 SABAB: Barcha akkauntlar bugungi limitga (30 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
