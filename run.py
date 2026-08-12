@@ -340,7 +340,7 @@ def check_replies():
         print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    return 30
+    return 40
 
 def process_single_lead(task_info):
     pending_lead = task_info['pending_lead']
@@ -450,7 +450,6 @@ def main():
                         p_idx = idx + 2
                         used_lead_indices.add(p_idx)
                         
-                        # Company ustuni B ustunida (row[1]) yoki boshqada ekanini xavfsiz tekshirish
                         comp_val = row[17].strip() if len(row) > 17 else (row[1].strip() if len(row) > 1 else '')
                         
                         tasks_to_run.append({
@@ -587,25 +586,32 @@ def main():
             selected_acc = None
             if task['is_followup'] and task['pending_lead'].get('SenderEmail'):
                 s_email = task['pending_lead']['SenderEmail'].lower().strip()
-                for acc in ACCOUNTS:
-                    if acc['email'].lower().strip() == s_email:
-                        selected_acc = acc
-                        break
+                st = sender_stats.get(s_email, {'today_count': 0, 'max_daily': 40})
+                t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
+                m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 40
 
-            if not selected_acc:
+                if t_count < m_limit:
+                    for acc in ACCOUNTS:
+                        if acc['email'].lower().strip() == s_email and acc['email'].lower().strip() not in used_acc_emails:
+                            selected_acc = acc
+                            break
+                else:
+                    print(f"⚠️ Follow-Up qoldirildi ({s_email}): Bugungi limitga ({t_count}/{m_limit}) yetgan!", flush=True)
+
+            if not selected_acc and not task['is_followup']:
                 available_accounts = []
                 for acc in ACCOUNTS:
                     clean_acc_email = acc['email'].lower().strip()
                     if clean_acc_email in used_acc_emails:
                         continue
 
-                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 30})
+                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 40})
                     t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 30
+                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 40
 
                     if t_count < m_limit:
                         available_accounts.append((acc, t_count))
-                
+
                 if available_accounts:
                     available_accounts.sort(key=lambda x: x[1])
                     selected_acc = available_accounts[0][0]
@@ -619,7 +625,7 @@ def main():
                     safe_update_cell(sheet, task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
-            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (30 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (40 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
             time.sleep(600)
             continue
 
