@@ -340,7 +340,7 @@ def check_replies():
         print(f"⚠️ IMAP umumiy tekshiruvida xato: {e}", flush=True)
 
 def calculate_daily_limit(acc, days_passed):
-    return 40
+    return 30  # Kunlik jami limit 30 ta
 
 def process_single_lead(task_info):
     pending_lead = task_info['pending_lead']
@@ -359,7 +359,6 @@ def process_single_lead(task_info):
         body = fu_tmpl['body']
         print(f"🔄 Follow-Up yuborilmoqda (PARALLEL): {selected_acc['email']} -> {lead_email}", flush=True)
     else:
-        # Template tanlash mantiqini xavfsiz qilish
         if lead_name and lead_company:
             selected = random.choice(TEMPLATE_WITH_NAME)
             subject = selected['subject'].format(name=lead_name, company=lead_company)
@@ -419,21 +418,103 @@ def main():
 
         rows = all_values[1:]
         now_uzb = get_uzb_now()
+        today_uzb = get_uzb_now()
+        today_str = today_uzb.strftime("%Y-%m-%d")
+
+        start_date_str = all_values[1][11].strip() if len(all_values) > 1 and len(all_values[1]) > 11 else ''
+        if not start_date_str:
+            start_date_str = today_str
+            sheet.batch_update([
+                {'range': 'L1', 'values': [['StartDate']]},
+                {'range': 'L2', 'values': [[start_date_str]]}
+            ])
+            days_passed = 0
+        else:
+            try:
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+                days_passed = (today_uzb.replace(tzinfo=None) - start_date).days
+                if days_passed < 0: days_passed = 0
+            except Exception:
+                days_passed = 0
+
+        last_sent_date = all_values[1][12].strip() if len(all_values) > 1 and len(all_values[1]) > 12 else ''
+        is_new_day = (last_sent_date != today_str)
+
+        if is_new_day:
+            sheet.batch_update([
+                {'range': 'M1', 'values': [['LastDate']]},
+                {'range': 'M2', 'values': [[today_str]]}
+            ])
+
+        safe_update_cell(sheet, 1, 9, "TodaySent") 
+
+        # --- SENDER STATS O'QISH VA KUNLIK FU / YANGI XATLAR HISOBI ---
+        sender_stats = {}
+        limit_updates = []
+        sender_today_fu = {acc['email'].lower().strip(): 0 for acc in ACCOUNTS}
+        sender_today_new = {acc['email'].lower().strip(): 0 for acc in ACCOUNTS}
+
+        # Bugungi yuborilgan FU va Yangi xatlar sonini aniqlash
+        if not is_new_day:
+            for r in rows:
+                s_e = r[4].strip().lower() if len(r) > 4 else ''
+                t_sent = r[10].strip() if len(r) > 10 else ''
+                fu_st = r[15].strip() if len(r) > 15 else '0'
+                last_fu_t = r[16].strip() if len(r) > 16 else ''
+
+                if s_e in sender_today_fu:
+                    if fu_st != '0' and last_fu_t.startswith(today_str):
+                        sender_today_fu[s_e] += 1
+                    elif r[2].strip().upper() == 'YES' and t_sent.startswith(today_str):
+                        sender_today_new[s_e] += 1
+
+        for idx, row in enumerate(rows):
+            g_val = row[6].strip().lower() if len(row) > 6 else '' 
+            h_val = row[7].strip() if len(row) > 7 else '0' 
+            i_val = row[8].strip() if len(row) > 8 else '0' 
+
+            if g_val and "@" in g_val:
+                today_cnt = 0 if is_new_day else (int(i_val) if i_val.isdigit() else 0)
+                if is_new_day:
+                    safe_update_cell(sheet, idx + 2, 9, 0)
+
+                acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower().strip() == g_val), {'type': 'domain'})
+                max_daily = calculate_daily_limit(acc_obj, days_passed)
+
+                limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
+
+                sender_stats[g_val] = {
+                    'row': idx + 2,
+                    'count': int(h_val) if h_val.isdigit() else 0,
+                    'today_count': today_cnt,
+                    'max_daily': max_daily
+                }
+
+        if limit_updates:
+            try:
+                sheet.batch_update(limit_updates)
+            except Exception as e:
+                print(f"⚠️ F ustuniga limitlarni yozishda xatolik: {e}", flush=True)
 
         tasks_to_run = []
         used_lead_indices = set()
         sending_status_updates = []
 
-        # 1. BIRINCHI SLOT: FAQAT 1 TA FOLLOW-UP OLADI
+        # 1. BIRINCHI SLOT: FAQAT 1 TA FOLLOW-UP OLADI (Kunlik max 10 ta)
         for idx, row in enumerate(rows):
             email_val = row[0].strip() if len(row) > 0 else ''
             status_val = row[2].strip().upper() if len(row) > 2 else ''
             reply_val = row[3].strip().upper() if len(row) > 3 else ''
+            s_email = row[4].strip().lower() if len(row) > 4 else ''
             
             fu_stage_str = row[15].strip() if len(row) > 15 else '0'  
             last_fu_time_str = row[16].strip() if len(row) > 16 else (row[10].strip() if len(row) > 10 else '') 
 
             fu_stage = int(fu_stage_str) if fu_stage_str.isdigit() else 0
+
+            # Agar jo'natuvchi akkaunt bugun 10 ta FU yuborib bo'lgan bo'lsa, o'tkazib yuboriladi
+            if s_email and sender_today_fu.get(s_email, 0) >= 10:
+                continue
 
             if email_val and status_val == 'YES' and reply_val != 'YES!' and fu_stage < 1 and last_fu_time_str:
                 try:
@@ -467,15 +548,18 @@ def main():
                 except Exception as ex:
                     print(f"⚠️ Sana parsing xatosi (Qator {idx+2}): {ex}", flush=True)
 
-        # 2. IKKINCHI SLOT: FAQAT YANGI LEAD OLADI
+        # 2. IKKINCHI SLOT: YANGI LEADLAR (Har bir siklda QAT'IY 1 TA)
         for row in rows:
             e_val = row[0].strip().lower() if len(row) > 0 else ''
             s_val = row[2].strip().upper() if len(row) > 2 else ''
             if e_val and s_val in ['YES', 'FAILED', 'SENDING...']:
                 GLOBAL_SENT_CACHE.add(e_val)
 
+        new_leads_added = 0
+        max_new_leads_per_cycle = 1  # Har bir siklda qat'iy 1 ta yangi xat
+
         for idx, row in enumerate(rows):
-            if len(tasks_to_run) >= 2:
+            if new_leads_added >= max_new_leads_per_cycle:
                 break
 
             p_idx = idx + 2
@@ -504,6 +588,7 @@ def main():
                     'is_followup': False,
                     'next_stage': 0
                 })
+                new_leads_added += 1
 
         if not tasks_to_run:
             print("✅ Hozircha yuboriladigan yangi xat ham, Follow-Up ham yo'q! 3 daqiqadan so'ng qayta tekshiriladi...", flush=True)
@@ -517,68 +602,6 @@ def main():
             except Exception as e:
                 print(f"⚠️ SENDING... statuslarini yangilashda xatolik: {e}", flush=True)
 
-        today_uzb = get_uzb_now()
-        today_str = today_uzb.strftime("%Y-%m-%d")
-
-        start_date_str = all_values[1][11].strip() if len(all_values) > 1 and len(all_values[1]) > 11 else ''
-        if not start_date_str:
-            start_date_str = today_str
-            sheet.batch_update([
-                {'range': 'L1', 'values': [['StartDate']]},
-                {'range': 'L2', 'values': [[start_date_str]]}
-            ])
-            days_passed = 0
-        else:
-            try:
-                start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-                days_passed = (today_uzb.replace(tzinfo=None) - start_date).days
-                if days_passed < 0: days_passed = 0
-            except Exception:
-                days_passed = 0
-
-        last_sent_date = all_values[1][12].strip() if len(all_values) > 1 and len(all_values[1]) > 12 else ''
-        is_new_day = (last_sent_date != today_str)
-
-        if is_new_day:
-            sheet.batch_update([
-                {'range': 'M1', 'values': [['LastDate']]},
-                {'range': 'M2', 'values': [[today_str]]}
-            ])
-
-        safe_update_cell(sheet, 1, 9, "TodaySent") 
-
-        # --- SENDER STATS O'QISH ---
-        sender_stats = {}
-        limit_updates = []
-
-        for idx, row in enumerate(rows):
-            g_val = row[6].strip().lower() if len(row) > 6 else '' 
-            h_val = row[7].strip() if len(row) > 7 else '0' 
-            i_val = row[8].strip() if len(row) > 8 else '0' 
-
-            if g_val and "@" in g_val:
-                today_cnt = 0 if is_new_day else (int(i_val) if i_val.isdigit() else 0)
-                if is_new_day:
-                    safe_update_cell(sheet, idx + 2, 9, 0)
-
-                acc_obj = next((acc for acc in ACCOUNTS if acc['email'].lower().strip() == g_val), {'type': 'domain'})
-                max_daily = calculate_daily_limit(acc_obj, days_passed)
-
-                limit_updates.append({'range': f'F{idx + 2}', 'values': [[max_daily]]})
-
-                sender_stats[g_val] = {
-                    'row': idx + 2,
-                    'count': int(h_val) if h_val.isdigit() else 0,
-                    'today_count': today_cnt,
-                    'max_daily': max_daily
-                }
-
-        if limit_updates:
-            try:
-                sheet.batch_update(limit_updates)
-            except Exception as e:
-                print(f"⚠️ F ustuniga limitlarni yozishda xatolik: {e}", flush=True)
-
         used_acc_emails = set()
         final_executable_tasks = []
 
@@ -586,17 +609,18 @@ def main():
             selected_acc = None
             if task['is_followup'] and task['pending_lead'].get('SenderEmail'):
                 s_email = task['pending_lead']['SenderEmail'].lower().strip()
-                st = sender_stats.get(s_email, {'today_count': 0, 'max_daily': 40})
+                st = sender_stats.get(s_email, {'today_count': 0, 'max_daily': 30})
                 t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 40
+                m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 30
+                fu_cnt = sender_today_fu.get(s_email, 0)
 
-                if t_count < m_limit:
+                if t_count < m_limit and fu_cnt < 10:
                     for acc in ACCOUNTS:
                         if acc['email'].lower().strip() == s_email and acc['email'].lower().strip() not in used_acc_emails:
                             selected_acc = acc
                             break
                 else:
-                    print(f"⚠️ Follow-Up qoldirildi ({s_email}): Bugungi limitga ({t_count}/{m_limit}) yetgan!", flush=True)
+                    print(f"⚠️ Follow-Up qoldirildi ({s_email}): Bugungi FU ({fu_cnt}/10) yoki jami limitga ({t_count}/{m_limit}) yetgan!", flush=True)
 
             if not selected_acc and not task['is_followup']:
                 available_accounts = []
@@ -605,11 +629,12 @@ def main():
                     if clean_acc_email in used_acc_emails:
                         continue
 
-                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 40})
+                    st = sender_stats.get(clean_acc_email, {'count': 0, 'today_count': 0, 'max_daily': 30})
                     t_count = int(st['today_count']) if str(st['today_count']).isdigit() else 0
-                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 40
+                    m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 30
+                    new_cnt = sender_today_new.get(clean_acc_email, 0)
 
-                    if t_count < m_limit:
+                    if t_count < m_limit and new_cnt < 20:
                         available_accounts.append((acc, t_count))
 
                 if available_accounts:
@@ -625,7 +650,7 @@ def main():
                     safe_update_cell(sheet, task['pending_idx'], 3, "")
 
         if not final_executable_tasks:
-            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (40 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
+            print("🛑 SABAB: Barcha akkauntlar bugungi limitga (30 ta) yetgan! 10 daqiqa kutilmoqda...", flush=True)
             time.sleep(600)
             continue
 
