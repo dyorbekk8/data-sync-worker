@@ -448,13 +448,13 @@ def main():
 
         safe_update_cell(sheet, 1, 9, "TodaySent") 
 
-        # --- SENDER STATS O'QISH VA KUNLIK FU / YANGI XATLAR HISOBI ---
+        # --- SENDER STATS O'QISH VA KUNLIK FU / YANGI XATLAR HISOBI (OPTIMALLASHTIRILGAN) ---
         sender_stats = {}
         limit_updates = []
         sender_today_fu = {acc['email'].lower().strip(): 0 for acc in ACCOUNTS}
         sender_today_new = {acc['email'].lower().strip(): 0 for acc in ACCOUNTS}
 
-        # Bugungi yuborilgan FU va Yangi xatlar sonini aniqlash
+        # 1. Bugungi yuborilgan FU va Yangi xatlar sonini leads ro'yxatidan aniqlash
         if not is_new_day:
             for r in rows:
                 s_e = r[4].strip().lower() if len(r) > 4 else ''
@@ -468,6 +468,7 @@ def main():
                     elif r[2].strip().upper() == 'YES' and t_sent.startswith(today_str):
                         sender_today_new[s_e] += 1
 
+        # 2. ACCOUNTS ro'yxati bo'yicha dinamik stats va limitlarni shakllantirish
         for idx, row in enumerate(rows):
             g_val = row[6].strip().lower() if len(row) > 6 else '' 
             h_val = row[7].strip() if len(row) > 7 else '0' 
@@ -602,11 +603,14 @@ def main():
             except Exception as e:
                 print(f"⚠️ SENDING... statuslarini yangilashda xatolik: {e}", flush=True)
 
+        # --- AKKAUNTLARNI TANLASH BO'LIMI (OPTIMALLASHTIRILGAN VA XAVFSIZ) ---
         used_acc_emails = set()
         final_executable_tasks = []
 
         for task in tasks_to_run:
             selected_acc = None
+            
+            # Follow-Up xatlari uchun: Xatni aynan birinchi bo'lib yuborgan akkauntni topamiz
             if task['is_followup'] and task['pending_lead'].get('SenderEmail'):
                 s_email = task['pending_lead']['SenderEmail'].lower().strip()
                 st = sender_stats.get(s_email, {'today_count': 0, 'max_daily': 30})
@@ -616,12 +620,14 @@ def main():
 
                 if t_count < m_limit and fu_cnt < 10:
                     for acc in ACCOUNTS:
-                        if acc['email'].lower().strip() == s_email and acc['email'].lower().strip() not in used_acc_emails:
+                        clean_e = acc['email'].lower().strip()
+                        if clean_e == s_email and clean_e not in used_acc_emails:
                             selected_acc = acc
                             break
                 else:
                     print(f"⚠️ Follow-Up qoldirildi ({s_email}): Bugungi FU ({fu_cnt}/10) yoki jami limitga ({t_count}/{m_limit}) yetgan!", flush=True)
 
+            # Yangi xatlar uchun: Limitga yetmagan va eng kam xat yuborgan akkauntni tanlaymiz
             if not selected_acc and not task['is_followup']:
                 available_accounts = []
                 for acc in ACCOUNTS:
@@ -634,10 +640,12 @@ def main():
                     m_limit = int(st['max_daily']) if str(st['max_daily']).isdigit() else 30
                     new_cnt = sender_today_new.get(clean_acc_email, 0)
 
+                    # Limitlar va kunlik yangi xatlar chegarasini tekshirish (Max 20 ta yangi xat)
                     if t_count < m_limit and new_cnt < 20:
                         available_accounts.append((acc, t_count))
 
                 if available_accounts:
+                    # Bugun eng kam xat yuborgan akkauntni birinchi o'ringa qo'yamiz (Balanslash)
                     available_accounts.sort(key=lambda x: x[1])
                     selected_acc = available_accounts[0][0]
 
