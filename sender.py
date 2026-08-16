@@ -2,77 +2,51 @@ import os
 import json
 
 # ==============================================================================
-# 1. GITHUB SECRETS / ENVIRONMENT VARIABLES ORQALI O'QISH (PUBLIC REPO UCHUN)
+# 1. GITHUB SECRETS / ENVIRONMENT VARIABLES ORQALI O'QISH
 # ==============================================================================
 accounts_json_env = os.environ.get("ACCOUNTS_JSON")
+
+HOST = "business99.web-hosting.com"
+SMTP_PORT = 465
+IMAP_PORT = 993
+
+ACCOUNTS = []
 
 if accounts_json_env:
     try:
         data = json.loads(accounts_json_env)
-        if isinstance(data, dict) and "accounts" in data:
-            common_pwd = data.get("common_password", "")
-            smtp_p = data.get("smtp_port", 465)
-            imap_p = data.get("imap_port", 993)
-            ACCOUNTS = []
+        
+        # Har bir akkauntni individual parol bilan shakllantirish
+        if isinstance(data, list):
+            for item in data:
+                email = item.get("email", "").strip()
+                password = item.get("password", "").strip()
+                if email and password:
+                    ACCOUNTS.append({
+                        "type": "domain",
+                        "email": email,
+                        "password": password,
+                        "smtp_host": HOST,
+                        "smtp_port": SMTP_PORT,
+                        "imap_host": HOST,
+                        "imap_port": IMAP_PORT
+                    })
+        elif isinstance(data, dict) and "accounts" in data:
+            common_pwd = data.get("common_password", "").strip()
             for acc in data["accounts"]:
-                # Barcha domenlar uchun to'g'ri Namecheap server hosti
-                host = "business99.web-hosting.com"
-
                 ACCOUNTS.append({
                     "type": "domain",
-                    "email": acc,
+                    "email": acc.strip(),
                     "password": common_pwd,
-                    "smtp_host": host,
-                    "smtp_port": smtp_p,
-                    "imap_host": host,
-                    "imap_port": imap_p
+                    "smtp_host": HOST,
+                    "smtp_port": SMTP_PORT,
+                    "imap_host": HOST,
+                    "imap_port": IMAP_PORT
                 })
-        else:
-            ACCOUNTS = data
 
-        print(f"✅ ACCOUNTS: Environment Variable'dan {len(ACCOUNTS)} ta akkaunt o'qildi.")
+        print(f"✅ ACCOUNTS: Environment Variable'dan {len(ACCOUNTS)} ta akkaunt muvaffaqiyatli o'qildi.")
     except Exception as e:
         print(f"❌ ACCOUNTS_JSON parsing xatoligi: {e}")
         ACCOUNTS = []
 else:
-    # Local test yoki zaxira ro'yxat (Aynan 23 ta akkaunt)
-    COMMON_PASS = "YOUR_ACTUAL_PASSWORD"
-    HOST = "business99.web-hosting.com"
-    
-    RAW_EMAILS = [
-        "alex@diyor.store",
-        "ceo@diyor.website",
-        "connect@diyor.space",
-        "create@diyor.store",
-        "dev@diyor.website",
-        "diyor@diyor.store",
-        "diyor.talks@diyor.space",
-        "growth@diyor.website",
-        "hello@diyor.store",
-        "hi@diyor.store",
-        "hq@diyor.space",
-        "impact@diyor.space",
-        "me@diyors.online",
-        "offer@diyors.online",
-        "official@diyor.website",
-        "outreach@diyor.space",
-        "sales@diyor.website",
-        "services@diyor.store",
-        "sites@diyor.website",
-        "team@diyor.website",
-        "web@diyor.store",
-        "work@diyor.space",
-        "xyz@diyors.online"
-    ]
-
-    ACCOUNTS = []
-    for email in RAW_EMAILS:
-        ACCOUNTS.append({
-            "type": "domain",
-            "email": email,
-            "password": COMMON_PASS,
-            "smtp_host": HOST,
-            "smtp_port": 465,
-            "imap_host": HOST,
-            "imap_port": 993
-        })
+    print("⚠️ ACCOUNTS_JSON environment variable topilmadi!")
