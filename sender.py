@@ -9,18 +9,14 @@ accounts_json_env = os.environ.get("ACCOUNTS_JSON")
 if accounts_json_env:
     try:
         data = json.loads(accounts_json_env)
-        # Agar JSON strukturangiz bitta umumiy parol va emaillar ro'yxatidan iborat bo'lsa:
         if isinstance(data, dict) and "accounts" in data:
-            common_pwd = data.get("common_password", "HAQIQY_PAROLI")
+            common_pwd = data.get("common_password", "")
             smtp_p = data.get("smtp_port", 465)
+            imap_p = data.get("imap_port", 993)
             ACCOUNTS = []
             for acc in data["accounts"]:
-                # Domen nomiga qarab mos hosting serverini tanlash
-                domain = acc.split("@")[-1]
-                if domain in ["diyors.online"]:
-                    host = "mail.diyors.online"
-                else:
-                    host = "premium357.web-hosting.com"
+                # Barcha domenlar uchun to'g'ri Namecheap server hosti
+                host = "business99.web-hosting.com"
 
                 ACCOUNTS.append({
                     "type": "domain",
@@ -28,7 +24,8 @@ if accounts_json_env:
                     "password": common_pwd,
                     "smtp_host": host,
                     "smtp_port": smtp_p,
-                    "imap_host": host
+                    "imap_host": host,
+                    "imap_port": imap_p
                 })
         else:
             ACCOUNTS = data
@@ -39,7 +36,8 @@ if accounts_json_env:
         ACCOUNTS = []
 else:
     # Local test yoki zaxira ro'yxat (Aynan 23 ta akkaunt)
-    COMMON_PASS = "HAQIQY_PAROLI"
+    COMMON_PASS = "YOUR_ACTUAL_PASSWORD"
+    HOST = "business99.web-hosting.com"
     
     RAW_EMAILS = [
         "alex@diyor.store",
@@ -69,14 +67,12 @@ else:
 
     ACCOUNTS = []
     for email in RAW_EMAILS:
-        domain = email.split("@")[-1]
-        host = "mail.diyors.online" if domain == "diyors.online" else "premium357.web-hosting.com"
-        
         ACCOUNTS.append({
             "type": "domain",
             "email": email,
             "password": COMMON_PASS,
-            "smtp_host": host,
+            "smtp_host": HOST,
             "smtp_port": 465,
-            "imap_host": host
+            "imap_host": HOST,
+            "imap_port": 993
         })
